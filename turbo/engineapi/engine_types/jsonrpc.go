@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/ledgerwatch/erigon/params"
+
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/ledgerwatch/erigon-lib/common"
@@ -96,6 +98,11 @@ type GetPayloadResponse struct {
 
 	// OP-Stack: Ecotone specific fields
 	ParentBeaconBlockRoot *common.Hash `json:"parentBeaconBlockRoot"`
+}
+
+type SuperchainSignal struct {
+	Recommended params.ProtocolVersion `json:"recommended"`
+	Required    params.ProtocolVersion `json:"required"`
 }
 
 type StringifiedError struct{ err error }

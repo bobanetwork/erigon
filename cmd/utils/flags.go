@@ -692,6 +692,10 @@ var (
 		Usage: "Timeout for historical RPC requests.",
 		Value: "5s",
 	}
+	RollupHaltOnIncompatibleProtocolVersionFlag = cli.StringFlag{
+		Name:  "rollup.halt",
+		Usage: "Opt-in option to halt on incompatible protocol version requirements of the given level (major/minor/patch/none), as signaled through the Engine API by the rollup node",
+	}
 
 	// Metrics flags
 	MetricsEnabledFlag = cli.BoolFlag{
@@ -1988,6 +1992,16 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 
 	if ctx.IsSet(TxPoolGossipDisableFlag.Name) {
 		cfg.DisableTxPoolGossip = ctx.Bool(TxPoolGossipDisableFlag.Name)
+	}
+
+	if ctx.IsSet(RollupHaltOnIncompatibleProtocolVersionFlag.Name) {
+		flag := ctx.String(RollupHaltOnIncompatibleProtocolVersionFlag.Name)
+		switch flag {
+		case "major", "minor", "patch", "none":
+			cfg.RollupHaltOnIncompatibleProtocolVersion = flag
+		default:
+			logger.Warn("Ignoring incorrect value for --rollup.halt. Please specify a level from major/minor/patch/none.")
+		}
 	}
 }
 

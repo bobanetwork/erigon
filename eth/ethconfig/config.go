@@ -281,6 +281,8 @@ type Config struct {
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string
 	RollupHistoricalRPCTimeout time.Duration
+
+	RollupHaltOnIncompatibleProtocolVersion string
 }
 
 type Sync struct {

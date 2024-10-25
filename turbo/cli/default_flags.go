@@ -176,6 +176,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.RollupSequencerHTTPFlag,
 	&utils.RollupHistoricalRPCFlag,
 	&utils.RollupHistoricalRPCTimeoutFlag,
+	&utils.RollupHaltOnIncompatibleProtocolVersionFlag,
 
 	&utils.LightClientDiscoveryAddrFlag,
 	&utils.LightClientDiscoveryPortFlag,
