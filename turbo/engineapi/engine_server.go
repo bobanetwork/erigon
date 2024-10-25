@@ -71,11 +71,13 @@ func NewEngineServer(logger log.Logger, config *chain.Config, executionService e
 	return &EngineServer{
 		logger:           logger,
 		config:           config,
+		ethConfig:        ethConfig,
 		executionService: executionService,
 		blockDownloader:  blockDownloader,
 		chainRW:          chainRW,
 		proposing:        proposing,
 		hd:               hd,
+		nodeCloser:       nodeCloser,
 	}
 }
 

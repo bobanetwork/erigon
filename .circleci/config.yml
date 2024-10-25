@@ -182,8 +182,6 @@ jobs:
             # need to explicitly set it here to prevent Cannon from running when we don't
             # want it to.
             export OP_E2E_CANNON_ENABLED="false"
-            # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
-            # constraint that gotestsum does not currently (nor likely will) accept files from different packages when building.
 
             # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
             # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
