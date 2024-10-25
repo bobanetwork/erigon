@@ -138,6 +138,7 @@ jobs:
     docker:
       - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.0
     resource_class: xlarge
+    parallelism: 6
     steps:
       - attach_workspace: { at: "." }
       - run:
@@ -176,7 +177,14 @@ jobs:
           working_directory: ~/project/boba
       - run:
           name: run tests
-          command:
+          command: |
+            # The below env var gets overridden when running make test-cannon, but we
+            # need to explicitly set it here to prevent Cannon from running when we don't
+            # want it to.
+            export OP_E2E_CANNON_ENABLED="false"
+            # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
+            # constraint that gotestsum does not currently (nor likely will) accept files from different packages when building.
+
             # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
             # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
             JUNIT_FILE=/tmp/test-results/<<parameters.module>>_<<parameters.target>>.xml make <<parameters.target>>
