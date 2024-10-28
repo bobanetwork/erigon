@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
@@ -32,6 +34,7 @@ import (
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/merge"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
@@ -524,6 +527,21 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	}
 	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	}
+
+	var eip1559Params []byte
+	if s.config.Optimism != nil {
+		if payloadAttributes.GasLimit == nil {
+			return nil, &engine_helpers.InvalidPayloadAttributesGasLmitErr
+		}
+		if s.config.IsHolocene(payloadAttributes.Timestamp.Uint64()) {
+			if err := misc.ValidateHolocene1559Params(payloadAttributes.EIP1559Params); err != nil {
+				return engine.STATUS_INVALID, engine.InvalidPayloadAttributes.With(err)
+			}
+			eip1559Params = bytes.Clone(payloadAttributes.EIP1559Params)
+		} else if len(payloadAttributes.EIP1559Params) != 0 {
+			return nil, &engine_helpers.InvalidPayloadAttributesEIP1559Err
+		}
 	}
 
 	req := &execution.AssembleBlockRequest{

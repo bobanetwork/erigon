@@ -24,68 +24,70 @@ import (
 // MarshalTOML marshals as TOML.
 func (c Config) MarshalTOML() (interface{}, error) {
 	type Config struct {
-		Sync                           Sync
-		Genesis                        *types.Genesis `toml:",omitempty"`
-		NetworkID                      uint64
-		EthDiscoveryURLs               []string
-		Prune                          prune.Mode
-		BatchSize                      datasize.ByteSize
-		ImportMode                     bool
-		BadBlockHash                   common.Hash
-		Snapshot                       BlocksFreezing
-		Downloader                     *downloadercfg.Cfg
-		BeaconRouter                   beacon_router_configuration.RouterConfiguration
-		CaplinConfig                   clparams.CaplinConfig
-		Dirs                           datadir.Dirs
-		ExternalSnapshotDownloaderAddr string
-		Whitelist                      map[uint64]common.Hash `toml:"-"`
-		Miner                          params.MiningConfig
-		Ethash                         ethashcfg.Config
-		Clique                         params.ConsensusSnapshotConfig
-		Aura                           chain.AuRaConfig
-		DeprecatedTxPool               DeprecatedTxPoolConfig
-		TxPool                         txpoolcfg.Config
-		GPO                            gaspricecfg.Config
-		RPCGasCap                      uint64  `toml:",omitempty"`
-		RPCTxFeeCap                    float64 `toml:",omitempty"`
-		StateStream                    bool
-		HistoryV3                      bool
-		HeimdallURL                    string
-		WithoutHeimdall                bool
-		WithHeimdallMilestones         bool
-		WithHeimdallWaypointRecording  bool
-		PolygonSync                    bool
-		Ethstats                       string
-		InternalCL                     bool
-		LightClientDiscoveryAddr       string
-		LightClientDiscoveryPort       uint64
-		LightClientDiscoveryTCPPort    uint64
-		SentinelAddr                   string
-		SentinelPort                   uint64
-		ForcePartialCommit             bool
-		OverrideCancunTime             *big.Int `toml:",omitempty"`
-		OverrideShanghaiTime           *big.Int `toml:",omitempty"`
-		OverridePragueTime             *big.Int `toml:",omitempty"`
-		OverrideOptimismCanyonTime     *big.Int `toml:",omitempty"`
-		OverrideOptimismEcotoneTime    *big.Int `toml:",omitempty"`
-		OverrideOptimismFjordTime      *big.Int `toml:",omitempty"`
-		OverrideOptimismGraniteTime    *big.Int `toml:",omitempty"`
-		SilkwormExecution              bool
-		SilkwormRpcDaemon              bool
-		SilkwormSentry                 bool
-		SilkwormVerbosity              string
-		SilkwormNumContexts            uint32
-		SilkwormRpcLogEnabled          bool
-		SilkwormRpcLogDirPath          string
-		SilkwormRpcLogMaxFileSize      uint16
-		SilkwormRpcLogMaxFiles         uint16
-		SilkwormRpcLogDumpResponse     bool
-		SilkwormRpcNumWorkers          uint32
-		SilkwormRpcJsonCompatibility   bool
-		DisableTxPoolGossip            bool
-		RollupSequencerHTTP            string
-		RollupHistoricalRPC            string
-		RollupHistoricalRPCTimeout     time.Duration
+		Sync                                    Sync
+		Genesis                                 *types.Genesis `toml:",omitempty"`
+		NetworkID                               uint64
+		EthDiscoveryURLs                        []string
+		Prune                                   prune.Mode
+		BatchSize                               datasize.ByteSize
+		ImportMode                              bool
+		BadBlockHash                            common.Hash
+		Snapshot                                BlocksFreezing
+		Downloader                              *downloadercfg.Cfg
+		BeaconRouter                            beacon_router_configuration.RouterConfiguration
+		CaplinConfig                            clparams.CaplinConfig
+		Dirs                                    datadir.Dirs
+		ExternalSnapshotDownloaderAddr          string
+		Whitelist                               map[uint64]common.Hash `toml:"-"`
+		Miner                                   params.MiningConfig
+		Ethash                                  ethashcfg.Config
+		Clique                                  params.ConsensusSnapshotConfig
+		Aura                                    chain.AuRaConfig
+		DeprecatedTxPool                        DeprecatedTxPoolConfig
+		TxPool                                  txpoolcfg.Config
+		GPO                                     gaspricecfg.Config
+		RPCGasCap                               uint64  `toml:",omitempty"`
+		RPCTxFeeCap                             float64 `toml:",omitempty"`
+		StateStream                             bool
+		HistoryV3                               bool
+		HeimdallURL                             string
+		WithoutHeimdall                         bool
+		WithHeimdallMilestones                  bool
+		WithHeimdallWaypointRecording           bool
+		PolygonSync                             bool
+		Ethstats                                string
+		InternalCL                              bool
+		LightClientDiscoveryAddr                string
+		LightClientDiscoveryPort                uint64
+		LightClientDiscoveryTCPPort             uint64
+		SentinelAddr                            string
+		SentinelPort                            uint64
+		ForcePartialCommit                      bool
+		OverrideCancunTime                      *big.Int `toml:",omitempty"`
+		OverrideShanghaiTime                    *big.Int `toml:",omitempty"`
+		OverridePragueTime                      *big.Int `toml:",omitempty"`
+		OverrideOptimismCanyonTime              *big.Int `toml:",omitempty"`
+		OverrideOptimismEcotoneTime             *big.Int `toml:",omitempty"`
+		OverrideOptimismFjordTime               *big.Int `toml:",omitempty"`
+		OverrideOptimismGraniteTime             *big.Int `toml:",omitempty"`
+		OverrideOptimismHoloceneTime            *big.Int `toml:",omitempty"`
+		SilkwormExecution                       bool
+		SilkwormRpcDaemon                       bool
+		SilkwormSentry                          bool
+		SilkwormVerbosity                       string
+		SilkwormNumContexts                     uint32
+		SilkwormRpcLogEnabled                   bool
+		SilkwormRpcLogDirPath                   string
+		SilkwormRpcLogMaxFileSize               uint16
+		SilkwormRpcLogMaxFiles                  uint16
+		SilkwormRpcLogDumpResponse              bool
+		SilkwormRpcNumWorkers                   uint32
+		SilkwormRpcJsonCompatibility            bool
+		DisableTxPoolGossip                     bool
+		RollupSequencerHTTP                     string
+		RollupHistoricalRPC                     string
+		RollupHistoricalRPCTimeout              time.Duration
+		RollupHaltOnIncompatibleProtocolVersion string
 	}
 	var enc Config
 	enc.Sync = c.Sync
@@ -134,6 +136,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideOptimismEcotoneTime = c.OverrideOptimismEcotoneTime
 	enc.OverrideOptimismFjordTime = c.OverrideOptimismFjordTime
 	enc.OverrideOptimismGraniteTime = c.OverrideOptimismGraniteTime
+	enc.OverrideOptimismHoloceneTime = c.OverrideOptimismHoloceneTime
 	enc.SilkwormExecution = c.SilkwormExecution
 	enc.SilkwormRpcDaemon = c.SilkwormRpcDaemon
 	enc.SilkwormSentry = c.SilkwormSentry
@@ -150,74 +153,77 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RollupSequencerHTTP = c.RollupSequencerHTTP
 	enc.RollupHistoricalRPC = c.RollupHistoricalRPC
 	enc.RollupHistoricalRPCTimeout = c.RollupHistoricalRPCTimeout
+	enc.RollupHaltOnIncompatibleProtocolVersion = c.RollupHaltOnIncompatibleProtocolVersion
 	return &enc, nil
 }
 
 // UnmarshalTOML unmarshals from TOML.
 func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	type Config struct {
-		Sync                           *Sync
-		Genesis                        *types.Genesis `toml:",omitempty"`
-		NetworkID                      *uint64
-		EthDiscoveryURLs               []string
-		Prune                          *prune.Mode
-		BatchSize                      *datasize.ByteSize
-		ImportMode                     *bool
-		BadBlockHash                   *common.Hash
-		Snapshot                       *BlocksFreezing
-		Downloader                     *downloadercfg.Cfg
-		BeaconRouter                   *beacon_router_configuration.RouterConfiguration
-		CaplinConfig                   *clparams.CaplinConfig
-		Dirs                           *datadir.Dirs
-		ExternalSnapshotDownloaderAddr *string
-		Whitelist                      map[uint64]common.Hash `toml:"-"`
-		Miner                          *params.MiningConfig
-		Ethash                         *ethashcfg.Config
-		Clique                         *params.ConsensusSnapshotConfig
-		Aura                           *chain.AuRaConfig
-		DeprecatedTxPool               *DeprecatedTxPoolConfig
-		TxPool                         *txpoolcfg.Config
-		GPO                            *gaspricecfg.Config
-		RPCGasCap                      *uint64  `toml:",omitempty"`
-		RPCTxFeeCap                    *float64 `toml:",omitempty"`
-		StateStream                    *bool
-		HistoryV3                      *bool
-		HeimdallURL                    *string
-		WithoutHeimdall                *bool
-		WithHeimdallMilestones         *bool
-		WithHeimdallWaypointRecording  *bool
-		PolygonSync                    *bool
-		Ethstats                       *string
-		InternalCL                     *bool
-		LightClientDiscoveryAddr       *string
-		LightClientDiscoveryPort       *uint64
-		LightClientDiscoveryTCPPort    *uint64
-		SentinelAddr                   *string
-		SentinelPort                   *uint64
-		ForcePartialCommit             *bool
-		OverrideCancunTime             *big.Int `toml:",omitempty"`
-		OverrideShanghaiTime           *big.Int `toml:",omitempty"`
-		OverridePragueTime             *big.Int `toml:",omitempty"`
-		OverrideOptimismCanyonTime     *big.Int `toml:",omitempty"`
-		OverrideOptimismEcotoneTime    *big.Int `toml:",omitempty"`
-		OverrideOptimismFjordTime      *big.Int `toml:",omitempty"`
-		OverrideOptimismGraniteTime    *big.Int `toml:",omitempty"`
-		SilkwormExecution              *bool
-		SilkwormRpcDaemon              *bool
-		SilkwormSentry                 *bool
-		SilkwormVerbosity              *string
-		SilkwormNumContexts            *uint32
-		SilkwormRpcLogEnabled          *bool
-		SilkwormRpcLogDirPath          *string
-		SilkwormRpcLogMaxFileSize      *uint16
-		SilkwormRpcLogMaxFiles         *uint16
-		SilkwormRpcLogDumpResponse     *bool
-		SilkwormRpcNumWorkers          *uint32
-		SilkwormRpcJsonCompatibility   *bool
-		DisableTxPoolGossip            *bool
-		RollupSequencerHTTP            *string
-		RollupHistoricalRPC            *string
-		RollupHistoricalRPCTimeout     *time.Duration
+		Sync                                    *Sync
+		Genesis                                 *types.Genesis `toml:",omitempty"`
+		NetworkID                               *uint64
+		EthDiscoveryURLs                        []string
+		Prune                                   *prune.Mode
+		BatchSize                               *datasize.ByteSize
+		ImportMode                              *bool
+		BadBlockHash                            *common.Hash
+		Snapshot                                *BlocksFreezing
+		Downloader                              *downloadercfg.Cfg
+		BeaconRouter                            *beacon_router_configuration.RouterConfiguration
+		CaplinConfig                            *clparams.CaplinConfig
+		Dirs                                    *datadir.Dirs
+		ExternalSnapshotDownloaderAddr          *string
+		Whitelist                               map[uint64]common.Hash `toml:"-"`
+		Miner                                   *params.MiningConfig
+		Ethash                                  *ethashcfg.Config
+		Clique                                  *params.ConsensusSnapshotConfig
+		Aura                                    *chain.AuRaConfig
+		DeprecatedTxPool                        *DeprecatedTxPoolConfig
+		TxPool                                  *txpoolcfg.Config
+		GPO                                     *gaspricecfg.Config
+		RPCGasCap                               *uint64  `toml:",omitempty"`
+		RPCTxFeeCap                             *float64 `toml:",omitempty"`
+		StateStream                             *bool
+		HistoryV3                               *bool
+		HeimdallURL                             *string
+		WithoutHeimdall                         *bool
+		WithHeimdallMilestones                  *bool
+		WithHeimdallWaypointRecording           *bool
+		PolygonSync                             *bool
+		Ethstats                                *string
+		InternalCL                              *bool
+		LightClientDiscoveryAddr                *string
+		LightClientDiscoveryPort                *uint64
+		LightClientDiscoveryTCPPort             *uint64
+		SentinelAddr                            *string
+		SentinelPort                            *uint64
+		ForcePartialCommit                      *bool
+		OverrideCancunTime                      *big.Int `toml:",omitempty"`
+		OverrideShanghaiTime                    *big.Int `toml:",omitempty"`
+		OverridePragueTime                      *big.Int `toml:",omitempty"`
+		OverrideOptimismCanyonTime              *big.Int `toml:",omitempty"`
+		OverrideOptimismEcotoneTime             *big.Int `toml:",omitempty"`
+		OverrideOptimismFjordTime               *big.Int `toml:",omitempty"`
+		OverrideOptimismGraniteTime             *big.Int `toml:",omitempty"`
+		OverrideOptimismHoloceneTime            *big.Int `toml:",omitempty"`
+		SilkwormExecution                       *bool
+		SilkwormRpcDaemon                       *bool
+		SilkwormSentry                          *bool
+		SilkwormVerbosity                       *string
+		SilkwormNumContexts                     *uint32
+		SilkwormRpcLogEnabled                   *bool
+		SilkwormRpcLogDirPath                   *string
+		SilkwormRpcLogMaxFileSize               *uint16
+		SilkwormRpcLogMaxFiles                  *uint16
+		SilkwormRpcLogDumpResponse              *bool
+		SilkwormRpcNumWorkers                   *uint32
+		SilkwormRpcJsonCompatibility            *bool
+		DisableTxPoolGossip                     *bool
+		RollupSequencerHTTP                     *string
+		RollupHistoricalRPC                     *string
+		RollupHistoricalRPCTimeout              *time.Duration
+		RollupHaltOnIncompatibleProtocolVersion *string
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -361,6 +367,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverrideOptimismGraniteTime != nil {
 		c.OverrideOptimismGraniteTime = dec.OverrideOptimismGraniteTime
 	}
+	if dec.OverrideOptimismHoloceneTime != nil {
+		c.OverrideOptimismHoloceneTime = dec.OverrideOptimismHoloceneTime
+	}
 	if dec.SilkwormExecution != nil {
 		c.SilkwormExecution = *dec.SilkwormExecution
 	}
@@ -408,6 +417,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.RollupHistoricalRPCTimeout != nil {
 		c.RollupHistoricalRPCTimeout = *dec.RollupHistoricalRPCTimeout
+	}
+	if dec.RollupHaltOnIncompatibleProtocolVersion != nil {
+		c.RollupHaltOnIncompatibleProtocolVersion = *dec.RollupHaltOnIncompatibleProtocolVersion
 	}
 	return nil
 }

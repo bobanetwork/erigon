@@ -53,10 +53,17 @@ type PayloadAttributes struct {
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
 	ParentBeaconBlockRoot *common.Hash        `json:"parentBeaconBlockRoot"`
 
-	// optimism
-	Transactions []hexutility.Bytes `json:"transactions,omitempty"`
-	NoTxPool     bool               `json:"noTxPool,omitempty"`
-	GasLimit     *hexutil.Uint64    `json:"gasLimit,omitempty"`
+	// Transactions is a field for rollups: the transactions list is forced into the block
+	Transactions []hexutility.Bytes `json:"transactions,omitempty" gencodec:"optional"`
+	// NoTxPool is a field for rollups: if true, the no transactions are taken out of the tx-pool,
+	// only transactions from the above Transactions list will be included.
+	NoTxPool bool `json:"noTxPool,omitempty"     gencodec:"optional"`
+	// GasLimit is a field for rollups: if set, this sets the exact gas limit the block produced with.
+	GasLimit *hexutil.Uint64 `json:"gasLimit,omitempty"     gencodec:"optional"`
+	// EIP1559Params is a field for rollups implementing the Holocene upgrade,
+	// and contains encoded EIP-1559 parameters. See:
+	// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#eip1559params-encoding
+	EIP1559Params []byte `json:"eip1559Params,omitempty" gencodec:"optional"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL

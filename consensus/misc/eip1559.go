@@ -17,7 +17,10 @@
 package misc
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
+	gomath "math"
 	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -100,6 +103,82 @@ func (f eip1559Calculator) CurrentFees(chainConfig *chain.Config, db kv.Getter) 
 	return baseFee, blobFee, minBlobGasPrice, currentHeader.GasLimit, nil
 }
 
+// DecodeHolocene1599Params extracts the Holcene 1599 parameters from the encoded form defined here:
+// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#eip-1559-parameters-in-payloadattributesv3
+//
+// Returns 0,0 if the format is invalid, though ValidateHolocene1559Params should be used instead of this function for
+// validity checking.
+func DecodeHolocene1559Params(params []byte) (uint64, uint64) {
+	if len(params) != 8 {
+		return 0, 0
+	}
+	denominator := binary.BigEndian.Uint32(params[:4])
+	elasticity := binary.BigEndian.Uint32(params[4:])
+	return uint64(denominator), uint64(elasticity)
+}
+
+// DecodeHoloceneExtraData decodes the Holocene 1559 parameters from the encoded form defined here:
+// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#eip-1559-parameters-in-block-header
+//
+// Returns 0,0 if the format is invalid, though ValidateHoloceneExtraData should be used instead of this function for
+// validity checking.
+func DecodeHoloceneExtraData(extra []byte) (uint64, uint64) {
+	if len(extra) != 9 {
+		return 0, 0
+	}
+	return DecodeHolocene1559Params(extra[1:])
+}
+
+// EncodeHolocene1559Params encodes the eip-1559 parameters into 'PayloadAttributes.EIP1559Params' format. Will panic if
+// either value is outside uint32 range.
+func EncodeHolocene1559Params(denom, elasticity uint64) []byte {
+	r := make([]byte, 8)
+	if denom > gomath.MaxUint32 || elasticity > gomath.MaxUint32 {
+		panic("eip-1559 parameters out of uint32 range")
+	}
+	binary.BigEndian.PutUint32(r[:4], uint32(denom))
+	binary.BigEndian.PutUint32(r[4:], uint32(elasticity))
+	return r
+}
+
+// EncodeHoloceneExtraData encodes the eip-1559 parameters into the header 'ExtraData' format. Will panic if either
+// value is outside uint32 range.
+func EncodeHoloceneExtraData(denom, elasticity uint64) []byte {
+	r := make([]byte, 9)
+	if denom > gomath.MaxUint32 || elasticity > gomath.MaxUint32 {
+		panic("eip-1559 parameters out of uint32 range")
+	}
+	// leave version byte 0
+	binary.BigEndian.PutUint32(r[1:5], uint32(denom))
+	binary.BigEndian.PutUint32(r[5:], uint32(elasticity))
+	return r
+}
+
+// ValidateHolocene1559Params checks if the encoded parameters are valid according to the Holocene
+// upgrade.
+func ValidateHolocene1559Params(params []byte) error {
+	if len(params) != 8 {
+		return fmt.Errorf("holocene eip-1559 params should be 8 bytes, got %d", len(params))
+	}
+	d, e := DecodeHolocene1559Params(params)
+	if e != 0 && d == 0 {
+		return errors.New("holocene params cannot have a 0 denominator unless elasticity is also 0")
+	}
+	return nil
+}
+
+// ValidateHoloceneExtraData checks if the header extraData is valid according to the Holocene
+// upgrade.
+func ValidateHoloceneExtraData(extra []byte) error {
+	if len(extra) != 9 {
+		return fmt.Errorf("holocene extraData should be 9 bytes, got %d", len(extra))
+	}
+	if extra[0] != 0 {
+		return fmt.Errorf("holocene extraData should have 0 version byte, got %d", extra[0])
+	}
+	return ValidateHolocene1559Params(extra[1:])
+}
+
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *chain.Config, parent *types.Header, time uint64) *big.Int {
 	// If the current block is pre bedrock, return 0.
@@ -112,10 +191,20 @@ func CalcBaseFee(config *chain.Config, parent *types.Header, time uint64) *big.I
 		return new(big.Int).SetUint64(params.InitialBaseFee)
 	}
 
+	elasticity := config.ElasticityMultiplier(params.ElasticityMultiplier)
+	denominator := getBaseFeeChangeDenominator(config, parent.Number.Uint64(), time)
+	if config.IsHolocene(parent.Time) {
+		denominator, elasticity = DecodeHoloceneExtraData(parent.Extra)
+		if denominator == 0 {
+			// this shouldn't happen as the ExtraData should have been validated prior
+			panic("invalid eip-1559 params in extradata")
+		}
+	}
+
 	var (
-		parentGasTarget          = parent.GasLimit / config.ElasticityMultiplier(params.ElasticityMultiplier)
+		parentGasTarget          = parent.GasLimit / elasticity
 		parentGasTargetBig       = new(big.Int).SetUint64(parentGasTarget)
-		baseFeeChangeDenominator = new(big.Int).SetUint64(getBaseFeeChangeDenominator(config, parent.Number.Uint64(), time))
+		baseFeeChangeDenominator = new(big.Int).SetUint64(denominator)
 	)
 	// If the parent gasUsed is the same as the target, the baseFee remains unchanged.
 	if parent.GasUsed == parentGasTarget {
