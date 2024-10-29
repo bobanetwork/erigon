@@ -193,7 +193,7 @@ func CalcBaseFee(config *chain.Config, parent *types.Header, time uint64) *big.I
 
 	elasticity := config.ElasticityMultiplier(params.ElasticityMultiplier)
 	denominator := getBaseFeeChangeDenominator(config, parent.Number.Uint64(), time)
-	if config.IsHolocene(parent.Time) {
+	if config.IsOptimism() && config.IsHolocene(parent.Time) {
 		denominator, elasticity = DecodeHoloceneExtraData(parent.Extra)
 		if denominator == 0 {
 			// this shouldn't happen as the ExtraData should have been validated prior

@@ -188,7 +188,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
 
-	if cfg.chainConfig.IsHolocene(header.Time) {
+	if cfg.chainConfig.IsOptimism() && cfg.chainConfig.IsHolocene(header.Time) {
 		if cfg.blockBuilderParameters.EIP1559Params == nil {
 			return fmt.Errorf("expected eip1559 params, got none")
 		}
