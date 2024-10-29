@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
@@ -536,7 +535,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		}
 		if s.config.IsHolocene(payloadAttributes.Timestamp.Uint64()) {
 			if err := misc.ValidateHolocene1559Params(payloadAttributes.EIP1559Params); err != nil {
-				return engine.STATUS_INVALID, engine.InvalidPayloadAttributes.With(err)
+				return nil, &engine_helpers.InvalidPayloadAttributesErr
 			}
 			eip1559Params = bytes.Clone(payloadAttributes.EIP1559Params)
 		} else if len(payloadAttributes.EIP1559Params) != 0 {
@@ -552,6 +551,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
 		Transactions:          txs,
 		NoTxPool:              payloadAttributes.NoTxPool,
+		Eip_1559Params:        eip1559Params,
 	}
 
 	if version >= clparams.CapellaVersion {
