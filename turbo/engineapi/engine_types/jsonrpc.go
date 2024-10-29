@@ -63,7 +63,7 @@ type PayloadAttributes struct {
 	// EIP1559Params is a field for rollups implementing the Holocene upgrade,
 	// and contains encoded EIP-1559 parameters. See:
 	// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/holocene/exec-engine.md#eip1559params-encoding
-	EIP1559Params []byte `json:"eip1559Params,omitempty" gencodec:"optional"`
+	EIP1559Params hexutility.Bytes `json:"eip1559Params,omitempty" gencodec:"optional"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL
