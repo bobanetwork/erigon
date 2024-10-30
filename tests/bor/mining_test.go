@@ -63,7 +63,8 @@ func TestMiningBenchmark(t *testing.T) {
 	var stacks []*node.Node
 	var ethbackends []*eth.Ethereum
 	var enodes []string
-	var txInTxpool = 5000
+	// Github instance is reallt slow. So, we will reduce the number of txs to 100.
+	var txInTxpool = 100
 	var txs []*types.Transaction
 
 	for i := 0; i < 1; i++ {
