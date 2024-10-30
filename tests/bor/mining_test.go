@@ -64,7 +64,7 @@ func TestMiningBenchmark(t *testing.T) {
 	// 2024-10-30T16:41:24.5763117Z created by github.com/ledgerwatch/erigon-lib/direct.(*SentryClientDirect).PeerEvents in goroutine 57
 	// 2024-10-30T16:41:24.5764486Z 	github.com/ledgerwatch/erigon-lib@v1.0.0/direct/sentry_client.go:317 +0x111
 	// This test is for polygon which is not useful for us. So, we will skip this test.
-	t.skip()
+	t.Skip()
 	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat())))
 	fdlimit.Raise(2048)
 
