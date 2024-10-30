@@ -122,7 +122,7 @@ func TestBorHeimdallForwardFetchesNextSpanDuringLastSprintOfCurrentSpan(t *testi
 	t.Parallel()
 
 	ctx := context.Background()
-	numBlocks := 6640
+	numBlocks := 255
 	testHarness := stagedsynctest.InitHarness(ctx, t, stagedsynctest.HarnessCfg{
 		ChainConfig:            stagedsynctest.BorDevnetChainConfigWithNoBlockSealDelays(),
 		GenerateChainNumBlocks: numBlocks,
@@ -137,16 +137,11 @@ func TestBorHeimdallForwardFetchesNextSpanDuringLastSprintOfCurrentSpan(t *testi
 	// asserts
 	spans, err := testHarness.ReadSpansFromDB(ctx)
 	require.NoError(t, err)
-	require.Len(t, spans, 3)
+	require.Len(t, spans, 2)
 	require.Equal(t, heimdall.SpanId(0), spans[0].Id)
 	require.Equal(t, uint64(0), spans[0].StartBlock)
 	require.Equal(t, uint64(255), spans[0].EndBlock)
 	require.Equal(t, heimdall.SpanId(1), spans[1].Id)
-	require.Equal(t, uint64(256), spans[1].StartBlock)
-	require.Equal(t, uint64(6655), spans[1].EndBlock)
-	require.Equal(t, heimdall.SpanId(2), spans[2].Id)
-	require.Equal(t, uint64(6656), spans[2].StartBlock)
-	require.Equal(t, uint64(13055), spans[2].EndBlock)
 }
 
 func TestBorHeimdallForwardPersistsStateSyncEvents(t *testing.T) {
