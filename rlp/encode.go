@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 )
@@ -366,6 +367,8 @@ func makeWriter(typ reflect.Type, ts tags) (writer, error) {
 		return writeUint256Ptr, nil
 	case typ.AssignableTo(uint256Int):
 		return writeUint256NoPtr, nil
+	case typ == reflect.TypeOf(hexutil.Big{}):
+		return writeHexBigNoPtr, nil
 	case kind == reflect.Ptr:
 		return makePtrWriter(typ, ts)
 	case reflect.PtrTo(typ).Implements(encoderInterface):
@@ -422,6 +425,12 @@ func writeBigIntPtr(val reflect.Value, w *encbuf) error {
 func writeBigIntNoPtr(val reflect.Value, w *encbuf) error {
 	i := val.Interface().(big.Int)
 	return writeBigInt(&i, w)
+}
+
+func writeHexBigNoPtr(val reflect.Value, w *encbuf) error {
+	bi := val.Interface().(hexutil.Big)
+	i := bi.ToInt()
+	return writeBigInt(i, w)
 }
 
 // wordBytes is the number of bytes in a big.Word

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/cmd/state/exec22"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -292,6 +293,9 @@ func (rw *ReconWorker) runTxTask(txTask *exec22.TxTask) error {
 	rules := txTask.Rules
 	var err error
 
+	// Optimism Canyon
+	create2DeployerTx := misc.IsCanyonActivationBlock(rw.chainConfig, txTask.Header.Time) && txTask.TxIndex == -1
+
 	var logger = log.New("recon-tx")
 
 	if txTask.BlockNum == 0 && txTask.TxIndex == -1 {
@@ -303,6 +307,11 @@ func (rw *ReconWorker) runTxTask(txTask *exec22.TxTask) error {
 		}
 		// For Genesis, rules should be empty, so that empty accounts can be included
 		rules = &chain.Rules{}
+	} else if create2DeployerTx {
+		if create2DeployerTx && txTask.Header != nil {
+			// Optimism Canyon
+			misc.EnsureCreate2Deployer(rw.chainConfig, txTask.Header.Time, ibs)
+		}
 	} else if txTask.Final {
 		if txTask.BlockNum > 0 {
 			//fmt.Printf("txNum=%d, blockNum=%d, finalisation of the block\n", txTask.TxNum, txTask.BlockNum)

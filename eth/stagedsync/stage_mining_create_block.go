@@ -15,6 +15,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/common/debug"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -32,6 +33,9 @@ type MiningBlock struct {
 	Receipts         types.Receipts
 	Withdrawals      []*types.Withdrawal
 	PreparedTxs      types.TransactionsStream
+
+	Deposits [][]byte
+	NoTxPool bool
 }
 
 type MiningState struct {
@@ -92,7 +96,7 @@ var maxTransactions uint16 = 1000
 // - resubmitAdjustCh - variable is not implemented
 func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBlockCfg, quit <-chan struct{}, logger log.Logger) (err error) {
 	current := cfg.miner.MiningBlock
-	txPoolLocals := []libcommon.Address{} //txPoolV2 has no concept of local addresses (yet?)
+	txPoolLocals := []libcommon.Address{} // txPoolV2 has no concept of local addresses (yet?)
 	coinbase := cfg.miner.MiningConfig.Etherbase
 
 	const (
@@ -171,7 +175,11 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		uncles:    mapset.NewSet[libcommon.Hash](),
 	}
 
-	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
+	targetGasLimit := &cfg.miner.MiningConfig.GasLimit
+	if cfg.chainConfig.IsOptimism() && cfg.blockBuilderParameters != nil && cfg.blockBuilderParameters.GasLimit != nil {
+		targetGasLimit = cfg.blockBuilderParameters.GasLimit
+	}
+	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, targetGasLimit)
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
@@ -179,6 +187,22 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
+
+	if cfg.chainConfig.IsOptimism() && cfg.chainConfig.IsHolocene(header.Time) {
+		if cfg.blockBuilderParameters.EIP1559Params == nil {
+			return fmt.Errorf("expected eip1559 params, got none")
+		}
+		// If this is a holocene block and the params are 0, we must convert them to their previous
+		// constants in the header.
+		d, e := misc.DecodeHolocene1559Params(cfg.blockBuilderParameters.EIP1559Params)
+		if d == 0 {
+			d = cfg.chainConfig.BaseFeeChangeDenominator(params.BaseFeeChangeDenominator, header.Time)
+			e = cfg.chainConfig.ElasticityMultiplier(params.ElasticityMultiplier)
+		}
+		header.Extra = misc.EncodeHoloceneExtraData(d, e)
+	} else if cfg.blockBuilderParameters.EIP1559Params != nil {
+		return fmt.Errorf("got eip1559 params, expected none")
+	}
 
 	if err = cfg.engine.Prepare(chain, header, ibs); err != nil {
 		logger.Error("Failed to prepare header for mining",
@@ -200,6 +224,9 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		current.Header = header
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
+
+		current.Deposits = cfg.blockBuilderParameters.Transactions
+		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil
 	}
 
@@ -296,7 +323,6 @@ func readNonCanonicalHeaders(tx kv.Tx, blockNum uint64, engine consensus.Engine,
 		} else {
 			remoteUncles[u.Hash()] = u
 		}
-
 	}
 	return
 }

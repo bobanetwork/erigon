@@ -127,9 +127,13 @@ type BaseAPI struct {
 
 	evmCallTimeout time.Duration
 	dirs           datadir.Dirs
+
+	// Optimism specific field
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
 }
 
-func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.Aggregator, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs) *BaseAPI {
+func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.Aggregator, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs, seqRPCService *rpc.Client, historicalRPCService *rpc.Client) *BaseAPI {
 	var (
 		blocksLRUSize      = 128 // ~32Mb
 		receiptsCacheLimit = 32
@@ -149,16 +153,18 @@ func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader serv
 	}
 
 	return &BaseAPI{
-		filters:        f,
-		stateCache:     stateCache,
-		blocksLRU:      blocksLRU,
-		receiptsCache:  receiptsCache,
-		_blockReader:   blockReader,
-		_txnReader:     blockReader,
-		_agg:           agg,
-		evmCallTimeout: evmCallTimeout,
-		_engine:        engine,
-		dirs:           dirs,
+		filters:              f,
+		stateCache:           stateCache,
+		blocksLRU:            blocksLRU,
+		receiptsCache:        receiptsCache,
+		_blockReader:         blockReader,
+		_txnReader:           blockReader,
+		_agg:                 agg,
+		evmCallTimeout:       evmCallTimeout,
+		_engine:              engine,
+		dirs:                 dirs,
+		seqRPCService:        seqRPCService,
+		historicalRPCService: historicalRPCService,
 	}
 }
 
@@ -201,6 +207,20 @@ func (api *BaseAPI) blockByHashWithSenders(ctx context.Context, tx kv.Tx, hash c
 	}
 
 	return api.blockWithSenders(ctx, tx, hash, *number)
+}
+
+func (api *BaseAPI) blockNumberFromBlockNumberOrHash(tx kv.Tx, bnh *rpc.BlockNumberOrHash) (uint64, error) {
+	if number, ok := bnh.Number(); ok {
+		return uint64(number.Int64()), nil
+	}
+	if hash, ok := bnh.Hash(); ok {
+		number := rawdb.ReadHeaderNumber(tx, hash)
+		if number == nil {
+			return 0, fmt.Errorf("block %x not found", hash)
+		}
+		return *number, nil
+	}
+	return 0, fmt.Errorf("invalid block number of hash")
 }
 
 func (api *BaseAPI) blockWithSenders(ctx context.Context, tx kv.Tx, hash common.Hash, number uint64) (*types.Block, error) {
@@ -379,6 +399,10 @@ func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpoo
 	}
 }
 
+func (api *APIImpl) relayToHistoricalBackend(ctx context.Context, result interface{}, method string, args ...interface{}) error {
+	return api.historicalRPCService.CallContext(ctx, result, method, args...)
+}
+
 // RPCTransaction represents a transaction that will serialize to the RPC representation of a transaction
 type RPCTransaction struct {
 	BlockHash           *common.Hash       `json:"blockHash"`
@@ -391,7 +415,7 @@ type RPCTransaction struct {
 	Hash                common.Hash        `json:"hash"`
 	Input               hexutility.Bytes   `json:"input"`
 	Nonce               hexutil.Uint64     `json:"nonce"`
-	To                  *common.Address    `json:"to"`
+	To                  *common.Address    `json:"to,omitempty"`
 	TransactionIndex    *hexutil.Uint64    `json:"transactionIndex"`
 	Value               *hexutil.Big       `json:"value"`
 	Type                hexutil.Uint64     `json:"type"`
@@ -403,11 +427,19 @@ type RPCTransaction struct {
 	YParity             *hexutil.Big       `json:"yParity,omitempty"`
 	R                   *hexutil.Big       `json:"r"`
 	S                   *hexutil.Big       `json:"s"`
+
+	// deposit-tx only
+	SourceHash *common.Hash `json:"sourceHash,omitempty"`
+	Mint       *hexutil.Big `json:"mint,omitempty"`
+	IsSystemTx *bool        `json:"isSystemTx,omitempty"`
+	// deposit-tx post-Canyon only
+	DepositReceiptVersion *hexutil.Uint64 `json:"depositReceiptVersion,omitempty"`
 }
 
 // NewRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int) *RPCTransaction {
+func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int,
+	receipt *types.Receipt) *RPCTransaction {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
 	// transactions. For non-protected transactions, the homestead signer is used
@@ -427,10 +459,13 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 	}
 	switch t := tx.(type) {
 	case *types.LegacyTx:
-		chainId = types.DeriveChainId(&t.V)
-		// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
-		if !chainId.IsZero() {
-			result.ChainID = (*hexutil.Big)(chainId.ToBig())
+		// avoid overflow by not calling DeriveChainId. chain id not included when v = 0
+		if !t.V.IsZero() {
+			chainId = types.DeriveChainId(&t.V)
+			// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
+			if !chainId.IsZero() {
+				result.ChainID = (*hexutil.Big)(chainId.ToBig())
+			}
 		}
 		result.GasPrice = (*hexutil.Big)(t.GasPrice.ToBig())
 		result.V = (*hexutil.Big)(t.V.ToBig())
@@ -456,6 +491,27 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.S = (*hexutil.Big)(t.S.ToBig())
 		result.Accesses = &t.AccessList
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
+	case *types.DepositTx:
+		if t.Mint != nil {
+			result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		}
+		result.ChainID = nil
+		result.SourceHash = &t.SourceHash
+		if t.IsSystemTransaction {
+			result.IsSystemTx = &t.IsSystemTransaction
+		}
+		if receipt != nil && receipt.DepositNonce != nil {
+			result.Nonce = hexutil.Uint64(*receipt.DepositNonce)
+			if receipt.DepositReceiptVersion != nil {
+				result.DepositReceiptVersion = new(hexutil.Uint64)
+				*result.DepositReceiptVersion = hexutil.Uint64(*receipt.DepositReceiptVersion)
+			}
+		}
+		result.GasPrice = (*hexutil.Big)(common.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(common.Big0)
+		result.R = (*hexutil.Big)(common.Big0)
+		result.S = (*hexutil.Big)(common.Big0)
 	case *types.BlobTx:
 		chainId.Set(t.ChainID)
 		result.ChainID = (*hexutil.Big)(chainId.ToBig())
@@ -522,9 +578,9 @@ func newRPCBorTransaction(opaqueTx types.Transaction, txHash common.Hash, blockH
 func newRPCPendingTransaction(tx types.Transaction, current *types.Header, config *chain.Config) *RPCTransaction {
 	var baseFee *big.Int
 	if current != nil {
-		baseFee = misc.CalcBaseFee(config, current)
+		baseFee = misc.CalcBaseFee(config, current, current.Time+1)
 	}
-	return NewRPCTransaction(tx, common.Hash{}, 0, 0, baseFee)
+	return NewRPCTransaction(tx, common.Hash{}, 0, 0, baseFee, nil)
 }
 
 // newRPCRawTransactionFromBlockIndex returns the bytes of a transaction given a block and a transaction index.

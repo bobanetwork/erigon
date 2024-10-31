@@ -69,6 +69,15 @@ type Config struct {
 	PragueTime   *big.Int `json:"pragueTime,omitempty"`
 	OsakaTime    *big.Int `json:"osakaTime,omitempty"`
 
+	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // Bedrock switch block (nil = no fork, 0 = already on optimism bedrock)
+	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
+	CanyonTime   *big.Int `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
+	// Delta: the Delta upgrade does not affect the execution-layer, and is thus not configurable in the chain config.
+	EcotoneTime  *big.Int `json:"ecotoneTime,omitempty"`  // Ecotone switch time (nil = no fork, 0 = already on optimism ecotone)
+	FjordTime    *big.Int `json:"fjordTime,omitempty"`    // Fjord switch time (nil = no fork, 0 = already on optimism fjord)
+	GraniteTime  *big.Int `json:"graniteTime,omitempty"`  // Granite switch time (nil = no fork, 0 = already on Optimism Granite)
+	HoloceneTime *big.Int `json:"holoceneTime,omitempty"` // Holocene switch time (nil = no fork, 0 = already on Optimism Holocene)
+
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
 	MaxBlobGasPerBlock         *uint64 `json:"maxBlobGasPerBlock,omitempty"`
@@ -83,6 +92,9 @@ type Config struct {
 	Clique *CliqueConfig `json:"clique,omitempty"`
 	Aura   *AuRaConfig   `json:"aura,omitempty"`
 
+	// Optimism config
+	Optimism *OptimismConfig `json:"optimism,omitempty"`
+
 	Bor     BorConfig       `json:"-"`
 	BorJSON json.RawMessage `json:"bor,omitempty"`
 
@@ -90,6 +102,18 @@ type Config struct {
 	// For deposit contract logs are needed by CL to validate/produce blocks.
 	// All logs should be available to a validating node through eth_getLogs
 	NoPruneContracts map[common.Address]bool `json:"noPruneContracts,omitempty"`
+}
+
+// OptimismConfig is the optimism config.
+type OptimismConfig struct {
+	EIP1559Elasticity        uint64 `json:"eip1559Elasticity"`
+	EIP1559Denominator       uint64 `json:"eip1559Denominator"`
+	EIP1559DenominatorCanyon uint64 `json:"eip1559DenominatorCanyon"`
+}
+
+// String implements the stringer interface, returning the optimism fee config details.
+func (o *OptimismConfig) String() string {
+	return "optimism"
 }
 
 type BorConfig interface {
@@ -104,7 +128,7 @@ type BorConfig interface {
 func (c *Config) String() string {
 	engine := c.getEngine()
 
-	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, Engine: %v, NoPruneContracts: %v}",
+	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, BedrockBlock: %v, RegolithTime: %v, CanyonTime: %v, EcotoneTime: %v, FjordTime: %v, GraniteTime: %v, HoloceneTime: %v, Engine: %v , NoPruneContracts: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -125,6 +149,13 @@ func (c *Config) String() string {
 		c.CancunTime,
 		c.PragueTime,
 		c.OsakaTime,
+		c.BedrockBlock,
+		c.RegolithTime,
+		c.CanyonTime,
+		c.EcotoneTime,
+		c.FjordTime,
+		c.GraniteTime,
+		c.HoloceneTime,
 		engine,
 		c.NoPruneContracts,
 	)
@@ -140,6 +171,8 @@ func (c *Config) getEngine() string {
 		return c.Bor.String()
 	case c.Aura != nil:
 		return c.Aura.String()
+	case c.Optimism != nil:
+		return c.Optimism.String()
 	default:
 		return "unknown"
 	}
@@ -245,12 +278,94 @@ func (c *Config) IsOsaka(time uint64) bool {
 	return isForked(c.OsakaTime, time)
 }
 
+func (c *Config) IsBedrock(num uint64) bool {
+	return isForked(c.BedrockBlock, num)
+}
+
+func (c *Config) IsRegolith(time uint64) bool {
+	return isForked(c.RegolithTime, time)
+}
+
+func (c *Config) IsCanyon(time uint64) bool {
+	return isForked(c.CanyonTime, time)
+}
+
+func (c *Config) IsEcotone(time uint64) bool {
+	return isForked(c.EcotoneTime, time)
+}
+
+func (c *Config) IsFjord(time uint64) bool {
+	return isForked(c.FjordTime, time)
+}
+
+func (c *Config) IsGranite(time uint64) bool {
+	return isForked(c.GraniteTime, time)
+}
+
+func (c *Config) IsHolocene(time uint64) bool {
+	return isForked(c.HoloceneTime, time)
+}
+
+// IsOptimism returns whether the node is an optimism node or not.
+func (c *Config) IsOptimism() bool {
+	return c.Optimism != nil
+}
+
+// IsOptimismBedrock returns true iff this is an optimism node & bedrock is active
+func (c *Config) IsOptimismBedrock(num uint64) bool {
+	return c.IsOptimism() && c.IsBedrock(num)
+}
+
+func (c *Config) IsOptimismRegolith(time uint64) bool {
+	return c.IsOptimism() && c.IsRegolith(time)
+}
+
+func (c *Config) IsOptimismCanyon(time uint64) bool {
+	return c.IsOptimism() && c.IsCanyon(time)
+}
+
+func (c *Config) IsOptimismEcotone(time uint64) bool {
+	return c.IsOptimism() && c.IsEcotone(time)
+}
+
+func (c *Config) IsOptimismFjord(time uint64) bool {
+	return c.IsOptimism() && c.IsFjord(time)
+}
+
+func (c *Config) IsOptimismGranite(time uint64) bool {
+	return c.IsOptimism() && c.IsGranite(time)
+}
+
+// IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
+func (c *Config) IsOptimismPreBedrock(num uint64) bool {
+	return c.IsOptimism() && !c.IsBedrock(num)
+}
+
 func (c *Config) GetBurntContract(num uint64) *common.Address {
 	if len(c.BurntContract) == 0 {
 		return nil
 	}
 	addr := borKeyValueConfigHelper(c.BurntContract, num)
 	return &addr
+}
+
+// BaseFeeChangeDenominator bounds the amount the base fee can change between blocks.
+func (c *Config) BaseFeeChangeDenominator(defaultParam, time uint64) uint64 {
+	if c.IsOptimism() {
+		if c.IsCanyon(time) {
+			return c.Optimism.EIP1559DenominatorCanyon
+		}
+		return c.Optimism.EIP1559Denominator
+	}
+	return defaultParam
+}
+
+// ElasticityMultiplier bounds the maximum gas limit an EIP-1559 block may have.
+func (c *Config) ElasticityMultiplier(defaultParam int) uint64 {
+	if c.IsOptimism() {
+		return c.Optimism.EIP1559Elasticity
+	}
+	return uint64(defaultParam)
 }
 
 func (c *Config) GetMinBlobGasPrice() uint64 {
@@ -512,6 +627,9 @@ type Rules struct {
 	IsCancun, IsNapoli                                bool
 	IsPrague, IsOsaka                                 bool
 	IsAura                                            bool
+	IsOptimismBedrock, IsOptimismRegolith             bool
+	IsOptimismCanyon, IsOptimismFjord                 bool
+	IsOptimismGranite                                 bool
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance
@@ -538,6 +656,11 @@ func (c *Config) Rules(num uint64, time uint64) *Rules {
 		IsPrague:           c.IsPrague(time),
 		IsOsaka:            c.IsOsaka(time),
 		IsAura:             c.Aura != nil,
+		IsOptimismBedrock:  c.IsOptimismBedrock(num),
+		IsOptimismRegolith: c.IsOptimismRegolith(time),
+		IsOptimismCanyon:   c.IsOptimismCanyon(time),
+		IsOptimismFjord:    c.IsOptimismFjord(time),
+		IsOptimismGranite:  c.IsOptimismGranite(time),
 	}
 }
 

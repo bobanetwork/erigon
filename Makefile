@@ -12,6 +12,7 @@ ERIGON_USER ?= erigon
 DOCKER_UID ?= $(shell id -u)
 DOCKER_GID ?= $(shell id -g)
 DOCKER_TAG ?= thorax/erigon:latest
+DOCKER_REPO ?= bobanetwork/op-erigon:latest
 
 # Variables below for building on host OS, and are ignored for docker
 #
@@ -85,7 +86,7 @@ docker: validate_docker_build_args git-submodules
 		${DOCKER_FLAGS} \
 		.
 
-xdg_data_home :=  ~/.local/share
+xdg_data_home := ~/.local/share
 ifdef XDG_DATA_HOME
 	xdg_data_home = $(XDG_DATA_HOME)
 endif
@@ -195,6 +196,9 @@ clean:
 	go clean -cache
 	rm -fr build/*
 
+format:
+	@find ./ -type f -name "*.go" -exec gofmt -w {} \;
+
 # The devtools target installs tools required for 'go generate'.
 # You need to put $GOBIN (or $GOPATH/bin) in your PATH to use 'go generate'.
 
@@ -261,7 +265,7 @@ escape:
 
 ## git-submodules:                    update git submodules
 git-submodules:
-	@[ -d ".git" ] || (echo "Not a git repository" && exit 1)
+	@[ -d ".git" ] || [ -f ".gitmodules" ] || (echo "Not a git repository" && exit 1)
 	@echo "Updating git submodules"
 	@# Dockerhub using ./hooks/post-checkout to set submodules, so this line will fail on Dockerhub
 	@# these lines will also fail if ran as root in a non-root user's checked out repository
@@ -311,7 +315,8 @@ release: git-submodules
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip-validate
 
-	@docker image push --all-tags thorax/erigon
+	@docker image push --all-tags ${DOCKER_REPO}
+	#@docker image push --all-tags ghcr.io/ledgerwatch/erigon
 
 # since DOCKER_UID, DOCKER_GID are default initialized to the current user uid/gid,
 # we need separate envvars to facilitate creation of the erigon user on the host OS.

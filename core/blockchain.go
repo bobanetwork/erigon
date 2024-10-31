@@ -31,9 +31,11 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/cmp"
 	"github.com/ledgerwatch/erigon-lib/common/dbg"
 	"github.com/ledgerwatch/erigon-lib/metrics"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
@@ -104,6 +106,9 @@ func ExecuteBlockEphemerally(
 	var rejectedTxs []*RejectedTx
 	includedTxs := make(types.Transactions, 0, block.Transactions().Len())
 	receipts := make(types.Receipts, 0, block.Transactions().Len())
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(chainConfig, header.Time, ibs)
+
 	noop := state.NewNoopWriter()
 	for i, tx := range block.Transactions() {
 		ibs.SetTxContext(tx.Hash(), block.Hash(), i)
@@ -240,6 +245,9 @@ func rlpHash(x interface{}) (h libcommon.Hash) {
 }
 
 func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain.Config, ibs *state.IntraBlockState, header *types.Header, engine consensus.EngineReader, constCall bool) (result []byte, err error) {
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(chainConfig, header.Time, ibs)
+
 	msg := types.NewMessage(
 		state.SystemAddress,
 		&contract,
@@ -264,6 +272,7 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		txContext = NewEVMTxContext(msg)
 	}
 	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author)
+	blockContext.L1CostFunc = opstack.NewL1CostFunc(chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, chainConfig, vmConfig)
 
 	ret, _, err := evm.Call(
@@ -282,6 +291,9 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 
 // SysCreate is a special (system) contract creation methods for genesis constructors.
 func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config, ibs *state.IntraBlockState, header *types.Header) (result []byte, err error) {
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(&chainConfig, header.Time, ibs)
+
 	msg := types.NewMessage(
 		contract,
 		nil, // to
@@ -298,6 +310,7 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 	author := &contract
 	txContext := NewEVMTxContext(msg)
 	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author)
+	blockContext.L1CostFunc = opstack.NewL1CostFunc(&chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.SysCreate(

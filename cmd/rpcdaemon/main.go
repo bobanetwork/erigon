@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/cli"
@@ -33,7 +34,32 @@ func main() {
 		defer db.Close()
 		defer engine.Close()
 
-		apiList := jsonrpc.APIList(db, backend, txPool, mining, ff, stateCache, blockReader, agg, cfg, engine, logger)
+		var seqRPCService *rpc.Client
+		var historicalRPCService *rpc.Client
+
+		// Setup sequencer and hsistorical RPC relay services
+		if cfg.RollupSequencerHTTP != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			client, err := rpc.DialContext(ctx, cfg.RollupSequencerHTTP, logger)
+			cancel()
+			if err != nil {
+				logger.Error(err.Error())
+				return nil
+			}
+			seqRPCService = client
+		}
+		if cfg.RollupHistoricalRPC != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), cfg.RollupHistoricalRPCTimeout)
+			client, err := rpc.DialContext(ctx, cfg.RollupHistoricalRPC, logger)
+			cancel()
+			if err != nil {
+				logger.Error(err.Error())
+				return nil
+			}
+			historicalRPCService = client
+		}
+
+		apiList := jsonrpc.APIList(db, backend, txPool, mining, ff, stateCache, blockReader, agg, cfg, engine, seqRPCService, historicalRPCService, logger)
 		rpc.PreAllocateRPCMetricLabels(apiList)
 		if err := cli.StartRpcServer(ctx, cfg, apiList, logger); err != nil {
 			logger.Error(err.Error())

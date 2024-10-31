@@ -194,7 +194,8 @@ func buildBlockResponse(ctx context.Context, br services.FullBlockReader, db kv.
 		additionalFields["totalDifficulty"] = (*hexutil.Big)(td)
 	}
 
-	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, nil, common.Hash{}, additionalFields)
+	receipts := rawdb.ReadRawReceipts(db, blockNum)
+	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, nil, common.Hash{}, additionalFields, receipts)
 
 	if err == nil && rpc.BlockNumber(block.NumberU64()) == rpc.PendingBlockNumber {
 		// Pending blocks need to nil out a few fields

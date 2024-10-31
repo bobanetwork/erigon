@@ -1,0 +1,224 @@
+version: 2.1
+
+orbs:
+  gcp-cli: circleci/gcp-cli@3.0.1
+  slack: circleci/slack@4.10.1
+
+commands:
+  gcp-oidc-authenticate:
+    description: "Authenticate with GCP using a CircleCI OIDC token."
+    parameters:
+      project_number:
+        type: env_var_name
+        default: GCP_PROJECT_NUMBER
+      workload_identity_pool_id:
+        type: env_var_name
+        default: GCP_WIP_ID
+      workload_identity_pool_provider_id:
+        type: env_var_name
+        default: GCP_WIP_PROVIDER_ID
+      service_account_email:
+        type: env_var_name
+        default: GCP_SERVICE_ACCOUNT_EMAIL
+      gcp_cred_config_file_path:
+        type: string
+        default: /home/circleci/gcp_cred_config.json
+      oidc_token_file_path:
+        type: string
+        default: /home/circleci/oidc_token.json
+    steps:
+      - run:
+          name: "Create OIDC credential configuration"
+          command: |
+            # Store OIDC token in temp file
+            echo $CIRCLE_OIDC_TOKEN > << parameters.oidc_token_file_path >>
+            # Create a credential configuration for the generated OIDC ID Token
+            gcloud iam workload-identity-pools create-cred-config \
+                "projects/${<< parameters.project_number >>}/locations/global/workloadIdentityPools/${<< parameters.workload_identity_pool_id >>}/providers/${<< parameters.workload_identity_pool_provider_id >>}"\
+                --output-file="<< parameters.gcp_cred_config_file_path >>" \
+                --service-account="${<< parameters.service_account_email >>}" \
+                --credential-source-file=<< parameters.oidc_token_file_path >>
+      - run:
+          name: "Authenticate with GCP using OIDC"
+          command: |
+            # Configure gcloud to leverage the generated credential configuration
+            gcloud auth login --brief --cred-file "<< parameters.gcp_cred_config_file_path >>"
+            # Configure ADC
+            echo "export GOOGLE_APPLICATION_CREDENTIALS='<< parameters.gcp_cred_config_file_path >>'" | tee -a "$BASH_ENV"
+
+# our defined job, and its steps
+jobs:
+  docker-release:
+    environment:
+      DOCKER_BUILDKIT: 1
+    parameters:
+      project_number:
+        type: env_var_name
+        default: GCP_PROJECT_NUMBER
+      docker_name:
+        description: Docker image name
+        type: string
+        default: "op-erigon"
+      docker_tags:
+        description: Docker image tags as csv
+        type: string
+      registry:
+        description: Docker registry
+        type: string
+        default: "us-docker.pkg.dev"
+      repo:
+        description: Docker repo
+        type: string
+        default: "bobanetwork-tools-artifacts/images"
+      push_tags:
+        description: Push release push tags
+        type: boolean
+        default: false
+    machine:
+      image: ubuntu-2204:edge
+      resource_class: xlarge
+    steps:
+      - gcp-cli/install
+      - gcp-oidc-authenticate
+      - checkout
+      - run:
+          name: Configure Docker
+          command: |
+            gcloud auth configure-docker <<parameters.registry>>
+      - run:
+          name: Build and push
+          no_output_timeout: 30m
+          command: |
+            RAW_TAGS="<<parameters.docker_tags>>"
+            if [ "$CIRCLE_BRANCH" = "optimism" ]; then
+              RAW_TAGS="$RAW_TAGS,optimism"
+            fi
+            IMAGE_BASE="<<parameters.registry>>/${GCP_PROJECT_ID}/<<parameters.repo>>/<<parameters.docker_name>>"
+            DOCKER_TAGS=$(echo -ne "$RAW_TAGS" | sed "s/,/\n/g" | sed "s/[^a-zA-Z0-9\n.]/-/g" | sed -e "s|^|-t ${IMAGE_BASE}:|")
+            docker context create buildx-build
+            docker buildx create --use buildx-build
+            docker buildx build --push \
+              $(echo -ne $DOCKER_TAGS | tr '\n' ' ') \
+              --platform=linux/arm64,linux/amd64 \
+              --build-arg VERSION=$CIRCLE_TAG \
+              --build-arg COMMIT=$CIRCLE_SHA \
+              --build-arg BUILDNUM=$CIRCLE_BUILD_NUM \
+              --progress plain \
+              -f Dockerfile .
+      - when:
+          condition:
+            equal: [ true, <<parameters.push_tags>> ]
+          steps:
+            - run:
+                name: Tag
+                command: |
+                  ./.circleci/ci-docker-tag-op-erigon-release.sh <<parameters.registry>>/${GCP_PROJECT_ID}/<<parameters.repo>> $CIRCLE_TAG $CIRCLE_SHA1
+  boba-checkout:
+    machine:
+      image: ubuntu-2204:edge
+      resource_class: medium
+    steps:
+      #modifying the usual checkout step so that we can clone two projects into a directory ~/project/<>
+      - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" op-erigon/
+      - run: git clone https://github.com/bobanetwork/boba boba/
+      - run: git -C boba rev-parse HEAD
+      - persist_to_workspace:
+          root: "."
+          paths:
+            - "op-erigon/"
+            - "boba/"
+  go-e2e-test:
+    parameters:
+      module:
+        description: Go Module Name
+        type: string
+      target:
+        description: The make target to execute
+        type: string
+    docker:
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.0
+    resource_class: xlarge
+    parallelism: 6
+    steps:
+      - attach_workspace: { at: "." }
+      - run:
+          name: Modify target Erigon
+          command: |
+            cp ~/project/op-erigon/go.mod ~/project/boba/op-erigon/go.mod
+            cd ~/project/boba/op-erigon
+            go mod edit -module="github.com/ethereum-optimism/optimism/op-erigon"
+            go mod edit \
+            -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/op-erigon@$CIRCLE_SHA1" \
+            -replace "github.com/ledgerwatch/erigon-lib=github.com/bobanetwork/op-erigon/erigon-lib@$CIRCLE_SHA1"
+            go mod tidy
+      - run:
+          name: prep results dir
+          command: mkdir -p /tmp/test-results
+          working_directory: ~/project/boba
+      - run:
+          name: Initial build
+          command: make
+          working_directory: ~/project/boba
+      - run:
+          name: Devnet-allocs
+          command: make devnet-allocs
+          working_directory: ~/project/boba
+      - run:
+          name: Cannon-prestate
+          command: make cannon-prestate
+          working_directory: ~/project/boba
+      - run:
+          name: Build Contracts
+          command: make build-contracts
+          working_directory: ~/project/boba
+      - run:
+          name: print go's available MIPS targets
+          command: go tool dist list | grep mips
+          working_directory: ~/project/boba
+      - run:
+          name: run tests
+          command: |
+            # The below env var gets overridden when running make test-cannon, but we
+            # need to explicitly set it here to prevent Cannon from running when we don't
+            # want it to.
+            export OP_E2E_CANNON_ENABLED="false"
+
+            # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
+            # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
+            JUNIT_FILE=/tmp/test-results/<<parameters.module>>_<<parameters.target>>.xml make <<parameters.target>>
+          working_directory: ~/project/boba/<<parameters.module>>
+      - store_test_results:
+          path: /tmp/test-results
+
+workflows:
+  release:
+    jobs:
+      - hold:
+          type: approval
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - docker-release:
+          name: Push to Docker (release)
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+          docker_tags: <<pipeline.git.revision>>,<<pipeline.git.tag>>
+          push_tags: true
+          context:
+            - bobanetwork-gcr-release
+          requires:
+            - hold
+  main:
+    jobs:
+      - boba-checkout
+      - go-e2e-test:
+          name: op-e2e-ext-erigon-tests
+          module: op-e2e
+          target: test-external-erigon
+          requires:
+            - boba-checkout

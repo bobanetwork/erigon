@@ -15,6 +15,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 	math2 "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/core"
@@ -1004,6 +1005,7 @@ func (api *TraceAPIImpl) Call(ctx context.Context, args TraceCallParam, traceTyp
 
 	blockCtx.GasLimit = math.MaxUint64
 	blockCtx.MaxGasLimit = true
+	blockCtx.L1CostFunc = opstack.NewL1CostFunc(chainConfig, ibs)
 
 	evm := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vm.Config{Debug: traceTypeTrace, Tracer: &ot})
 
@@ -1188,6 +1190,7 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 		useParent = true
 	}
 
+	l1CostFunc := opstack.NewL1CostFunc(chainConfig, ibs)
 	for txIndex, msg := range msgs {
 		if err := libcommon.Stopped(ctx.Done()); err != nil {
 			return nil, nil, err
@@ -1234,6 +1237,9 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 			blockCtx.GasLimit = math.MaxUint64
 			blockCtx.MaxGasLimit = true
 		}
+		ibs.Reset()
+		blockCtx.L1CostFunc = l1CostFunc
+		// Create initial IntraBlockState, we will compare it with ibs (IntraBlockState after the transaction)
 
 		// Clone the state cache before applying the changes for diff after transaction execution, clone is discarded
 		var cloneReader state.StateReader
