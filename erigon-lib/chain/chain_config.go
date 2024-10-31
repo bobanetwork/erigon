@@ -73,9 +73,10 @@ type Config struct {
 	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
 	CanyonTime   *big.Int `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
 	// Delta: the Delta upgrade does not affect the execution-layer, and is thus not configurable in the chain config.
-	EcotoneTime *big.Int `json:"ecotoneTime,omitempty"` // Ecotone switch time (nil = no fork, 0 = already on optimism ecotone)
-	FjordTime   *big.Int `json:"fjordTime,omitempty"`   // Fjord switch time (nil = no fork, 0 = already on optimism fjord)
-	GraniteTime *big.Int `json:"graniteTime,omitempty"` // Granite switch time (nil = no fork, 0 = already on Optimism Granite)
+	EcotoneTime  *big.Int `json:"ecotoneTime,omitempty"`  // Ecotone switch time (nil = no fork, 0 = already on optimism ecotone)
+	FjordTime    *big.Int `json:"fjordTime,omitempty"`    // Fjord switch time (nil = no fork, 0 = already on optimism fjord)
+	GraniteTime  *big.Int `json:"graniteTime,omitempty"`  // Granite switch time (nil = no fork, 0 = already on Optimism Granite)
+	HoloceneTime *big.Int `json:"holoceneTime,omitempty"` // Holocene switch time (nil = no fork, 0 = already on Optimism Holocene)
 
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
@@ -127,7 +128,7 @@ type BorConfig interface {
 func (c *Config) String() string {
 	engine := c.getEngine()
 
-	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, BedrockBlock: %v, RegolithTime: %v, CanyonTime: %v, EcotoneTime: %v, FjordTime: %v, GraniteTime: %v, Engine: %v , NoPruneContracts: %v}",
+	return fmt.Sprintf("{ChainID: %v, Homestead: %v, DAO: %v, Tangerine Whistle: %v, Spurious Dragon: %v, Byzantium: %v, Constantinople: %v, Petersburg: %v, Istanbul: %v, Muir Glacier: %v, Berlin: %v, London: %v, Arrow Glacier: %v, Gray Glacier: %v, Terminal Total Difficulty: %v, Merge Netsplit: %v, Shanghai: %v, Cancun: %v, Prague: %v, Osaka: %v, BedrockBlock: %v, RegolithTime: %v, CanyonTime: %v, EcotoneTime: %v, FjordTime: %v, GraniteTime: %v, HoloceneTime: %v, Engine: %v , NoPruneContracts: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -154,6 +155,7 @@ func (c *Config) String() string {
 		c.EcotoneTime,
 		c.FjordTime,
 		c.GraniteTime,
+		c.HoloceneTime,
 		engine,
 		c.NoPruneContracts,
 	)
@@ -298,6 +300,10 @@ func (c *Config) IsFjord(time uint64) bool {
 
 func (c *Config) IsGranite(time uint64) bool {
 	return isForked(c.GraniteTime, time)
+}
+
+func (c *Config) IsHolocene(time uint64) bool {
+	return isForked(c.HoloceneTime, time)
 }
 
 // IsOptimism returns whether the node is an optimism node or not.

@@ -309,11 +309,12 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			OverrideCancunTime:   config.OverrideCancunTime,
 			OverrideShanghaiTime: config.OverrideShanghaiTime,
 			// Optimism
-			OverrideOptimismCanyonTime:  config.OverrideOptimismCanyonTime,
-			OverrideOptimismEcotoneTime: config.OverrideOptimismEcotoneTime,
-			OverrideOptimismFjordTime:   config.OverrideOptimismFjordTime,
-			OverrideOptimismGraniteTime: config.OverrideOptimismGraniteTime,
-			OverridePragueTime:          config.OverridePragueTime,
+			OverrideOptimismCanyonTime:   config.OverrideOptimismCanyonTime,
+			OverrideOptimismEcotoneTime:  config.OverrideOptimismEcotoneTime,
+			OverrideOptimismFjordTime:    config.OverrideOptimismFjordTime,
+			OverrideOptimismGraniteTime:  config.OverrideOptimismGraniteTime,
+			OverrideOptimismHoloceneTime: config.OverrideOptimismHoloceneTime,
+			OverridePragueTime:           config.OverridePragueTime,
 		}
 		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, overrides, tmpdir, logger)
 		if _, ok := genesisErr.(*chain.ConfigCompatError); genesisErr != nil && !ok {
@@ -343,6 +344,9 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		if chainConfig.GraniteTime == nil {
 			log.Warn("Optimism GraniteTime has not been set")
+		}
+		if chainConfig.HoloceneTime == nil {
+			log.Warn("Optimism HoloceneTime has not been set")
 		}
 	}
 

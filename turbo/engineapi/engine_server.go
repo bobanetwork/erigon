@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -32,6 +33,7 @@ import (
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/merge"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
@@ -526,6 +528,21 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
 
+	var eip1559Params []byte
+	if s.config.Optimism != nil {
+		if payloadAttributes.GasLimit == nil {
+			return nil, &engine_helpers.InvalidPayloadAttributesGasLmitErr
+		}
+		if s.config.IsHolocene(payloadAttributes.Timestamp.Uint64()) {
+			if err := misc.ValidateHolocene1559Params(payloadAttributes.EIP1559Params); err != nil {
+				return nil, &engine_helpers.InvalidPayloadAttributesErr
+			}
+			eip1559Params = bytes.Clone(payloadAttributes.EIP1559Params)
+		} else if len(payloadAttributes.EIP1559Params) != 0 {
+			return nil, &engine_helpers.InvalidPayloadAttributesEIP1559Err
+		}
+	}
+
 	req := &execution.AssembleBlockRequest{
 		ParentHash:            gointerfaces.ConvertHashToH256(forkchoiceState.HeadHash),
 		Timestamp:             timestamp,
@@ -534,6 +551,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
 		Transactions:          txs,
 		NoTxPool:              payloadAttributes.NoTxPool,
+		Eip_1559Params:        eip1559Params,
 	}
 
 	if version >= clparams.CapellaVersion {
