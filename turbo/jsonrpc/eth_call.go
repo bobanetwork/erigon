@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
-
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/kv/membatchwithdb"
 	"github.com/ledgerwatch/log/v3"
 	"google.golang.org/grpc"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	txpool_proto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/kv/membatchwithdb"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
 	"github.com/ledgerwatch/erigon/core"
@@ -46,10 +46,26 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	}
 	defer tx.Rollback()
 
-	chainConfig, err := api.chainConfig(ctx, tx)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
+	chainConfig, err := api.chainConfig(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
+		}
+		var result hexutility.Bytes
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_call", args, hexutil.EncodeUint64(blockNum), overrides); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return result, nil
+	}
+
 	engine := api.engine()
 
 	if args.Gas == nil || uint64(*args.Gas) == 0 {
@@ -143,6 +159,26 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 		bNrOrHash = *blockNrOrHash
 	}
 
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(dbtx, &bNrOrHash)
+	if err != nil {
+		return 0, err
+	}
+	chainConfig, err := api.chainConfig(ctx, dbtx)
+	if err != nil {
+		return 0, fmt.Errorf("read chain config: %v", err)
+	}
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return 0, rpc.ErrNoHistoricalFallback
+		}
+		var result hexutil.Uint64
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_estimateGas", args, hexutil.EncodeUint64(blockNum)); err != nil {
+			return 0, fmt.Errorf("historical backend error: %w", err)
+		}
+		return result, nil
+	}
+
 	// Determine the highest gas limit can be used during the estimation.
 	if args.Gas != nil && uint64(*args.Gas) >= params.TxGas {
 		hi = uint64(*args.Gas)
@@ -221,10 +257,6 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 	}
 	gasCap = hi
 
-	chainConfig, err := api.chainConfig(ctx, dbtx)
-	if err != nil {
-		return 0, err
-	}
 	engine := api.engine()
 
 	latestCanBlockNumber, latestCanHash, isLatest, err := rpchelper.GetCanonicalBlockNumber(latestNumOrHash, dbtx, api.filters) // DoCall cannot be executed on non-canonical blocks
@@ -327,6 +359,26 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	defer tx.Rollback()
 	if api.historyV3(tx) {
 		return nil, fmt.Errorf("not supported by Erigon3")
+	}
+
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	chainConfig, err := api.chainConfig(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
+		}
+		var result accounts.AccProofResult
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getProof", address, storageKeys, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
 	}
 
 	blockNr, _, _, err := rpchelper.GetBlockNumber(blockNrOrHash, tx, api.filters)
@@ -438,10 +490,26 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	}
 	defer tx.Rollback()
 
-	chainConfig, err := api.chainConfig(ctx, tx)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
+	chainConfig, err := api.chainConfig(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
+		}
+		var result accessListResult
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_createAccessList", args, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
+	}
+
 	engine := api.engine()
 
 	blockNumber, hash, latest, err := rpchelper.GetCanonicalBlockNumber(bNrOrHash, tx, api.filters) // DoCall cannot be executed on non-canonical blocks
@@ -551,6 +619,7 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 		config := vm.Config{Tracer: tracer, Debug: true, NoBaseFee: true}
 		blockCtx := transactions.NewEVMBlockContext(engine, header, bNrOrHash.RequireCanonical, tx, api._blockReader)
 		txCtx := core.NewEVMTxContext(msg)
+		blockCtx.L1CostFunc = opstack.NewL1CostFunc(chainConfig, state)
 
 		evm := vm.NewEVM(blockCtx, txCtx, state, chainConfig, config)
 		gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())

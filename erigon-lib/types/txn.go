@@ -108,6 +108,8 @@ type TxSlot struct {
 	Blobs       [][]byte
 	Commitments []gokzg4844.KZGCommitment
 	Proofs      []gokzg4844.KZGProof
+
+	RollupCostData RollupCostData
 }
 
 const (
@@ -115,6 +117,7 @@ const (
 	AccessListTxType byte = 1 // EIP-2930
 	DynamicFeeTxType byte = 2 // EIP-1559
 	BlobTxType       byte = 3 // EIP-4844
+	DepositTxType    byte = 0x7e
 )
 
 var ErrParseTxn = fmt.Errorf("%w transaction", rlp.ErrParse)
@@ -122,6 +125,7 @@ var ErrParseTxn = fmt.Errorf("%w transaction", rlp.ErrParse)
 var ErrRejected = errors.New("rejected")
 var ErrAlreadyKnown = errors.New("already known")
 var ErrRlpTooBig = errors.New("txn rlp too big")
+var ErrTxTypeNotSupported = errors.New("transaction type not supported")
 
 // Set the RLP validate function
 func (ctx *TxParseContext) ValidateRLP(f func(txnRlp []byte) error) { ctx.validateRlp = f }
@@ -184,7 +188,7 @@ func (ctx *TxParseContext) ParseTransaction(payload []byte, pos int, slot *TxSlo
 	// If it is non-legacy transaction, the transaction type follows, and then the list
 	if !legacy {
 		slot.Type = payload[p]
-		if slot.Type > BlobTxType {
+		if slot.Type > BlobTxType && slot.Type != DepositTxType {
 			return 0, fmt.Errorf("%w: unknown transaction type: %d", ErrParseTxn, slot.Type)
 		}
 		p++
@@ -298,8 +302,10 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	// Compute transaction hash
 	ctx.Keccak1.Reset()
 	ctx.Keccak2.Reset()
+	var txType byte
 	if !legacy {
 		typeByte := []byte{slot.Type}
+		txType = typeByte[0]
 		if _, err = ctx.Keccak1.Write(typeByte); err != nil {
 			return 0, fmt.Errorf("%w: computing IdHash (hashing type Prefix): %s", ErrParseTxn, err) //nolint
 		}
@@ -323,9 +329,81 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 		}
 	}
 
+	if slot.Type == DepositTxType {
+		// SourchHash
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx sourchHash: %s", ErrParseTxn, err) //nolint
+		}
+		// From
+		dataPos, dataLen, err := rlp.String(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx from: %s", ErrParseTxn, err) //nolint
+		}
+		if ctx.withSender {
+			copy(sender, payload[dataPos:dataPos+dataLen])
+		}
+		p = dataPos + dataLen
+		// To
+		p, dataLen, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx to: %s", ErrParseTxn, err) //nolint
+		}
+		slot.Creation = dataLen == 0
+		// Mint
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx mint: %s", ErrParseTxn, err) //nolint
+		}
+		// Value
+		p, err = rlp.U256(payload, p, &slot.Value)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx value: %s", ErrParseTxn, err) //nolint
+		}
+		// Gas
+		p, slot.Gas, err = rlp.U64(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx gas: %s", ErrParseTxn, err) //nolint
+		}
+		// IsSystemTx
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx isSystemTx: %s", ErrParseTxn, err) //nolint
+		}
+		// Data
+		dataPos, dataLen, err = rlp.String(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx data len: %s", ErrParseTxn, err) //nolint
+		}
+		slot.DataLen = dataLen
+
+		// Zero and non-zero bytes are priced differently
+		slot.DataNonZeroLen = 0
+		for _, byt := range payload[dataPos : dataPos+dataLen] {
+			if byt != 0 {
+				slot.DataNonZeroLen++
+			}
+		}
+		{
+			// Deposit transactions always have 0 rollupcost data
+			slot.RollupCostData = RollupCostData{}
+		}
+		p = dataPos + dataLen
+
+		// Set IDHash to slot
+		_, _ = ctx.Keccak1.(io.Reader).Read(slot.IDHash[:32])
+		if validateHash != nil {
+			if err := validateHash(slot.IDHash[:32]); err != nil {
+				return p, err
+			}
+		}
+		return p, nil
+	}
+
 	// Remember where signing hash data begins (it will need to be wrapped in an RLP list)
 	sigHashPos := p
-	if !legacy {
+
+	if !legacy && txType != DepositTxType {
 		p, err = rlp.U256(payload, p, &ctx.ChainID)
 		if err != nil {
 			return 0, fmt.Errorf("%w: chainId len: %s", ErrParseTxn, err) //nolint
@@ -342,10 +420,12 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	}
 	// Next follows the nonce, which we need to parse
 	p, slot.Nonce, err = rlp.U64(payload, p)
+
 	if err != nil {
 		return 0, fmt.Errorf("%w: nonce: %s", ErrParseTxn, err) //nolint
 	}
 	// Next follows gas price or tip
+	// Although consensus rules specify that tip can be up to 256 bit long, we narrow it to 64 bit
 	p, err = rlp.U256(payload, p, &slot.Tip)
 	if err != nil {
 		return 0, fmt.Errorf("%w: tip: %s", ErrParseTxn, err) //nolint
@@ -355,6 +435,7 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	if slot.Type < DynamicFeeTxType {
 		slot.FeeCap = slot.Tip
 	} else {
+		// Although consensus rules specify that feeCap can be up to 256 bit long, we narrow it to 64 bit
 		p, err = rlp.U256(payload, p, &slot.FeeCap)
 		if err != nil {
 			return 0, fmt.Errorf("%w: feeCap: %s", ErrParseTxn, err) //nolint
@@ -373,7 +454,6 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	if dataLen != 0 && dataLen != 20 {
 		return 0, fmt.Errorf("%w: unexpected length of to field: %d", ErrParseTxn, dataLen)
 	}
-
 	// Only note if To field is empty or not
 	slot.Creation = dataLen == 0
 	p = dataPos + dataLen
@@ -395,6 +475,19 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 		if byt != 0 {
 			slot.DataNonZeroLen++
 		}
+	}
+
+	{
+		// full tx contents count towards rollup data gas, not just tx data
+		var zeroes, ones uint64
+		for _, byt := range payload {
+			if byt == 0 {
+				zeroes++
+			} else {
+				ones++
+			}
+		}
+		slot.RollupCostData = RollupCostData{Zeroes: zeroes, Ones: ones, FastLzSize: uint64(FlzCompressLen(payload))}
 	}
 
 	p = dataPos + dataLen
@@ -1009,4 +1102,93 @@ func UnwrapTxPlayloadRlp(blobTxRlp []byte) ([]byte, error) {
 	blobTxRlp[0] = 0x3
 	// Include the prefix part of the rlp
 	return blobTxRlp, nil
+}
+
+// RollupCostData is a transaction structure that caches data for quickly computing the data
+// availablility costs for the transaction.
+type RollupCostData struct {
+	Zeroes, Ones uint64
+	FastLzSize   uint64
+}
+
+type L1CostFn func(tx *TxSlot) *uint256.Int
+
+// FlzCompressLen returns the length of the data after compression through FastLZ, based on
+// https://github.com/Vectorized/solady/blob/5315d937d79b335c668896d7533ac603adac5315/js/solady.js
+func FlzCompressLen(ib []byte) uint32 {
+	n := uint32(0)
+	ht := make([]uint32, 8192)
+	u24 := func(i uint32) uint32 {
+		return uint32(ib[i]) | (uint32(ib[i+1]) << 8) | (uint32(ib[i+2]) << 16)
+	}
+	cmp := func(p uint32, q uint32, e uint32) uint32 {
+		l := uint32(0)
+		for e -= q; l < e; l++ {
+			if ib[p+l] != ib[q+l] {
+				e = 0
+			}
+		}
+		return l
+	}
+	literals := func(r uint32) {
+		n += 0x21 * (r / 0x20)
+		r %= 0x20
+		if r != 0 {
+			n += r + 1
+		}
+	}
+	match := func(l uint32) {
+		l--
+		n += 3 * (l / 262)
+		if l%262 >= 6 {
+			n += 3
+		} else {
+			n += 2
+		}
+	}
+	hash := func(v uint32) uint32 {
+		return ((2654435769 * v) >> 19) & 0x1fff
+	}
+	setNextHash := func(ip uint32) uint32 {
+		ht[hash(u24(ip))] = ip
+		return ip + 1
+	}
+	a := uint32(0)
+	ipLimit := uint32(len(ib)) - 13
+	if len(ib) < 13 {
+		ipLimit = 0
+	}
+	for ip := a + 2; ip < ipLimit; {
+		var (
+			r uint32
+			d uint32
+		)
+		for {
+			s := u24(ip)
+			h := hash(s)
+			r = ht[h]
+			ht[h] = ip
+			d = ip - r
+			if ip >= ipLimit {
+				break
+			}
+			ip++
+			if d <= 0x1fff && s == u24(r) {
+				break
+			}
+		}
+		if ip >= ipLimit {
+			break
+		}
+		ip--
+		if ip > a {
+			literals(ip - a)
+		}
+		l := cmp(r+3, ip+3, ipLimit+9)
+		match(l)
+		ip = setNextHash(setNextHash(ip + l))
+		a = ip
+	}
+	literals(uint32(len(ib)) - a)
+	return n
 }

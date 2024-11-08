@@ -352,6 +352,7 @@ func (tx *LegacyTx) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, er
 		data:       tx.Data,
 		accessList: nil,
 		checkNonce: true,
+		l1CostGas:  tx.RollupCostData(),
 	}
 
 	var err error
@@ -443,4 +444,10 @@ func (tx *LegacyTx) Sender(signer Signer) (libcommon.Address, error) {
 	}
 	tx.from.Store(addr)
 	return addr, nil
+}
+
+func (tx *LegacyTx) IsDepositTx() bool { return false }
+
+func (tx *LegacyTx) RollupCostData() types2.RollupCostData {
+	return tx.computeRollupGas(tx)
 }

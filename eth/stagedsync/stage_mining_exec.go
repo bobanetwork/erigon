@@ -20,6 +20,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/membatch"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -92,6 +93,9 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	chainReader := ChainReader{Cfg: cfg.chainConfig, Db: tx, BlockReader: cfg.blockReader, Logger: logger}
 	core.InitializeBlockExecution(cfg.engine, chainReader, current.Header, &cfg.chainConfig, ibs, logger)
 
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(&cfg.chainConfig, current.Header.Time, ibs)
+
 	// Create an empty block based on temporary copied state for
 	// sealing in advance without waiting block execution finished.
 	if !noempty {
@@ -105,8 +109,32 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
 	if noempty {
+		log.Debug("Starting SpawnMiningExecStage", "txs", txs, "numDeposits", len(current.Deposits), "NoTxPool", current.NoTxPool)
+
+		if len(current.Deposits) > 0 {
+			var txs []types.Transaction
+			for i := range current.Deposits {
+				transaction, err := types.UnmarshalTransactionFromBinary(current.Deposits[i], false)
+				if err == io.EOF {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				txs = append(txs, transaction)
+			}
+			depTS := types.NewTransactionsFixedOrder(txs)
+
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			log.Debug("addTransactionsToMiningBlock (deposit) result", "err", err, "logs", logs)
+			if err != nil {
+				return err
+			}
+		}
+
 		if txs != nil && !txs.Empty() {
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			log.Debug("addTransactionsToMiningBlock (txs) result", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -125,6 +153,11 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 
 			for {
+				if current.NoTxPool {
+					// Only allow the Deposit transactions from op-node
+					log.Debug("Not adding transactions because NoTxPool is set")
+					break
+				}
 				txs, y, err := getNextTransactions(cfg, chainID, current.Header, 50, executionAt, simulationTx, yielded, logger)
 				if err != nil {
 					return err
@@ -132,6 +165,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 
 				if !txs.Empty() {
 					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+					log.Debug("addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
 						return err
 					}
@@ -224,6 +258,17 @@ func getNextTransactions(
 
 		var sender libcommon.Address
 		copy(sender[:], txSlots.Senders.At(i))
+		if sender == (libcommon.Address{}) {
+			v, r, s := transaction.RawSignatureValues()
+			signer := types.MakeSigner(&cfg.chainConfig, header.Number.Uint64(), header.Time)
+			address, err := transaction.Sender(*signer)
+			if err != nil {
+				logger.Error("Recovered sender from txpool as empty but could not recover sender", "txHash", transaction.Hash(), "txType", transaction.Type(), "nonce", transaction.GetNonce(), "v", v, "r", r, "s", s, "err", err)
+				continue
+			}
+			logger.Warn("Recovered sender from txpool as empty", "txHash", transaction.Hash(), "txType", transaction.Type(), "nonce", transaction.GetNonce(), "v", v, "r", r, "s", s, "address", address)
+			sender = address
+		}
 
 		// Check if tx nonce is too low
 		txs = append(txs, transaction)
@@ -268,6 +313,13 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 		if !ok {
 			transactions = transactions[1:]
 			noAccountCnt++
+			continue
+		}
+		if int(transaction.Type()) == types.DepositTxType {
+			// FIXME - may need to include some of the later checks
+			log.Debug("Bypassing filterBadTransactions for Deposit tx", "transaction", transaction)
+			filtered = append(filtered, transaction)
+			transactions = transactions[1:]
 			continue
 		}
 		// Check transaction nonce

@@ -2,6 +2,8 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
-
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -60,6 +62,30 @@ func (api *PrivateDebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rp
 		return fmt.Errorf("invalid arguments; block with hash %x not found", hash)
 	}
 
+	chainConfig, err := api.chainConfig(ctx, tx)
+	if err != nil {
+		stream.WriteNil()
+		return err
+	}
+
+	if chainConfig.IsOptimismPreBedrock(block.NumberU64()) {
+		if api.historicalRPCService == nil {
+			return rpc.ErrNoHistoricalFallback
+		}
+		var traceResult interface{}
+		// relay using block hash
+		if err := api.relayToHistoricalBackend(ctx, &traceResult, "debug_traceBlockByHash", block.Hash(), config); err != nil {
+			return fmt.Errorf("historical backend error: %w", err)
+		}
+		// stream out relayed response
+		result, err := json.Marshal(&traceResult)
+		if err != nil {
+			return err
+		}
+		stream.WriteRaw(string(result))
+		return nil
+	}
+
 	// if we've pruned this history away for this block then just return early
 	// to save any red herring errors
 	err = api.BaseAPI.checkPruneHistory(tx, block.NumberU64())
@@ -77,11 +103,6 @@ func (api *PrivateDebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rp
 		config.BorTraceEnabled = &disabled
 	}
 
-	chainConfig, err := api.chainConfig(ctx, tx)
-	if err != nil {
-		stream.WriteNil()
-		return err
-	}
 	engine := api.engine()
 
 	txns := block.Transactions()
@@ -238,6 +259,22 @@ func (api *PrivateDebugAPIImpl) TraceTransaction(ctx context.Context, hash commo
 		isBorStateSyncTxn = true
 	}
 
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return rpc.ErrNoHistoricalFallback
+		}
+		var traceResult interface{}
+		if err := api.relayToHistoricalBackend(ctx, &traceResult, "debug_traceTransaction", hash, config); err != nil {
+			return fmt.Errorf("historical backend error: %w", err)
+		}
+		result, err := json.Marshal(traceResult)
+		if err != nil {
+			return err
+		}
+		stream.WriteRaw(string(result))
+		return nil
+	}
+
 	// check pruning to ensure we have history at this block level
 	err = api.BaseAPI.checkPruneHistory(tx, blockNum)
 	if err != nil {
@@ -319,6 +356,10 @@ func (api *PrivateDebugAPIImpl) TraceCall(ctx context.Context, args ethapi.CallA
 		return fmt.Errorf("get block number: %v", err)
 	}
 
+	if chainConfig.IsOptimismPreBedrock(blockNumber) {
+		return errors.New("l2geth does not have a debug_traceCall method")
+	}
+
 	err = api.BaseAPI.checkPruneHistory(dbtx, blockNumber)
 	if err != nil {
 		return err
@@ -363,6 +404,7 @@ func (api *PrivateDebugAPIImpl) TraceCall(ctx context.Context, args ethapi.CallA
 
 	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, dbtx, api._blockReader)
 	txCtx := core.NewEVMTxContext(msg)
+	blockCtx.L1CostFunc = opstack.NewL1CostFunc(chainConfig, ibs)
 	// Trace the transaction and return
 	return transactions.TraceTx(ctx, msg, blockCtx, txCtx, ibs, config, chainConfig, stream, api.evmCallTimeout)
 }
@@ -473,6 +515,8 @@ func (api *PrivateDebugAPIImpl) TraceCallMany(ctx context.Context, bundles []Bun
 	}
 
 	blockCtx = core.NewEVMBlockContext(header, getHash, api.engine(), nil /* author */)
+	blockCtx.L1CostFunc = opstack.NewL1CostFunc(chainConfig, st)
+
 	// Get a new instance of the EVM
 	evm = vm.NewEVM(blockCtx, txCtx, st, chainConfig, vm.Config{Debug: false})
 	signer := types.MakeSigner(chainConfig, blockNum, block.Time())

@@ -2,7 +2,6 @@ package ethapi
 
 import (
 	"bytes"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/length"
@@ -11,6 +10,7 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
+/*
 // Result structs for GetProof
 type AccountResult struct {
 	Address      libcommon.Address `json:"address"`
@@ -21,12 +21,13 @@ type AccountResult struct {
 	StorageHash  libcommon.Hash    `json:"storageHash"`
 	StorageProof []StorageResult   `json:"storageProof"`
 }
+
 type StorageResult struct {
 	Key   string       `json:"key"`
 	Value *hexutil.Big `json:"value"`
 	Proof []string     `json:"proof"`
 }
-
+*/
 /*TODO: to support proofs
 func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address libcommon.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 	block := uint64(blockNr.Int64()) + 1

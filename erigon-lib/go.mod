@@ -145,3 +145,5 @@ require (
 )
 
 replace github.com/anacrolix/torrent => github.com/erigontech/torrent v1.54.2-alpha-8
+
+replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/op-erigon-interfaces v0.0.0-20241029165724-26728efdc6b9

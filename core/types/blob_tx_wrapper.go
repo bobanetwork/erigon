@@ -366,6 +366,10 @@ func (txw *BlobTxWrapper) DecodeRLP(s *rlp.Stream) error {
 	return s.ListEnd()
 }
 
+func (txw *BlobTxWrapper) RollupCostData() types2.RollupCostData {
+	return txw.Tx.RollupCostData()
+}
+
 // We deliberately encode only the transaction payload because the only case we need to serialize
 // blobs/commitments/proofs is when we reply to GetPooledTransactions (and that's handled by the txpool).
 func (txw *BlobTxWrapper) EncodingSize() int {

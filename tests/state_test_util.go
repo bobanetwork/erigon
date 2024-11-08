@@ -34,6 +34,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
 	"github.com/ledgerwatch/erigon/common"
@@ -235,6 +236,7 @@ func (t *StateTest) RunNoVerify(tx kv.RwTx, subtest StateSubtest, vmconfig vm.Co
 	txContext := core.NewEVMTxContext(msg)
 	header := block.Header()
 	context := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), nil, &t.json.Env.Coinbase)
+	context.L1CostFunc = opstack.NewL1CostFunc(config, statedb)
 	context.GetHash = vmTestBlockHash
 	if baseFee != nil {
 		context.BaseFee = new(uint256.Int)

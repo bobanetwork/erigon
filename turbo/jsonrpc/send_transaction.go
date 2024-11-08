@@ -11,6 +11,7 @@ import (
 	txPoolProto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 
 	"github.com/ledgerwatch/erigon/core/types"
+	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/params"
 )
 
@@ -44,6 +45,26 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, err
 	}
 
+	if cc.IsOptimism() && txn.Type() == types.BlobTxType {
+		return common.Hash{}, types.ErrTxTypeNotSupported
+	}
+
+	if api.seqRPCService != nil {
+		if err := api.seqRPCService.CallContext(ctx, nil, "eth_sendRawTransaction", hexutility.Encode(encodedTx)); err != nil {
+			return common.Hash{}, err
+		}
+		return txn.Hash(), nil
+	}
+
+	// If the transaction fee cap is already specified, ensure the
+	// fee of the given transaction is _reasonable_.
+	if err := checkTxFee(txn.GetPrice().ToBig(), txn.GetGas(), ethconfig.Defaults.RPCTxFeeCap); err != nil {
+		return common.Hash{}, err
+	}
+	if !txn.Protected() && !api.AllowUnprotectedTxs {
+		return common.Hash{}, errors.New("only replay-protected (EIP-155) transactions allowed over RPC")
+	}
+
 	if txn.Protected() {
 		txnChainId := txn.GetChainID()
 		chainId := cc.ChainID
@@ -61,6 +82,7 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 	if res.Imported[0] != txPoolProto.ImportResult_SUCCESS {
 		return hash, fmt.Errorf("%s: %s", txPoolProto.ImportResult_name[int32(res.Imported[0])], res.Errors[0])
 	}
+	api.logger.Debug("SendRawTransaction submitted", "hash", hash, "txn", txn)
 
 	return txn.Hash(), nil
 }

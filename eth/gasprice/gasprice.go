@@ -62,6 +62,8 @@ type Oracle struct {
 	checkBlocks                       int
 	percentile                        int
 	maxHeaderHistory, maxBlockHistory int
+
+	minSuggestedPriorityFee *big.Int // for Optimism fee suggestion
 }
 
 // NewOracle returns a new gasprice oracle which can recommend suitable
@@ -94,7 +96,7 @@ func NewOracle(backend OracleBackend, params gaspricecfg.Config, cache Cache) *O
 
 	setBorDefaultGpoIgnorePrice(backend.ChainConfig(), params)
 
-	return &Oracle{
+	r := &Oracle{
 		backend:          backend,
 		lastPrice:        params.Default,
 		maxPrice:         maxPrice,
@@ -105,6 +107,17 @@ func NewOracle(backend OracleBackend, params gaspricecfg.Config, cache Cache) *O
 		maxHeaderHistory: params.MaxHeaderHistory,
 		maxBlockHistory:  params.MaxBlockHistory,
 	}
+
+	if backend.ChainConfig().IsOptimism() {
+		r.minSuggestedPriorityFee = params.MinSuggestedPriorityFee
+		if r.minSuggestedPriorityFee == nil || r.minSuggestedPriorityFee.Int64() <= 0 {
+			r.minSuggestedPriorityFee = gaspricecfg.DefaultMinSuggestedPriorityFee
+			log.Warn("Sanitizing invalid optimism gasprice oracle min priority fee suggestion",
+				"provided", params.MinSuggestedPriorityFee,
+				"updated", r.minSuggestedPriorityFee)
+		}
+	}
+	return r
 }
 
 // SuggestTipCap returns a TipCap so that newly created transaction can
@@ -130,6 +143,10 @@ func (oracle *Oracle) SuggestTipCap(ctx context.Context) (*big.Int, error) {
 	latestHead, latestPrice = oracle.cache.GetLatest()
 	if latestHead == headHash {
 		return latestPrice, nil
+	}
+
+	if oracle.backend.ChainConfig().IsOptimism() {
+		return oracle.SuggestOptimismPriorityFee(ctx, head, headHash), nil
 	}
 
 	number := head.Number.Uint64()
@@ -291,3 +308,9 @@ func setBorDefaultGpoIgnorePrice(chainConfig *chain.Config, gasPriceConfig gaspr
 		gasPriceConfig.IgnorePrice = gaspricecfg.BorDefaultGpoIgnorePrice
 	}
 }
+
+type bigIntArray []*big.Int
+
+func (s bigIntArray) Len() int           { return len(s) }
+func (s bigIntArray) Less(i, j int) bool { return s[i].Cmp(s[j]) < 0 }
+func (s bigIntArray) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

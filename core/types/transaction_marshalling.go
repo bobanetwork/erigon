@@ -32,6 +32,12 @@ type txJSON struct {
 	S        *hexutil.Big       `json:"s"`
 	To       *libcommon.Address `json:"to"`
 
+	// Deposit transaction fields
+	SourceHash *libcommon.Hash    `json:"sourceHash,omitempty"`
+	From       *libcommon.Address `json:"from,omitempty"`
+	Mint       *hexutil.Big       `json:"mint,omitempty"`
+	IsSystemTx *bool              `json:"isSystemTx,omitempty"`
+
 	// Access list transaction fields:
 	ChainID    *hexutil.Big       `json:"chainId,omitempty"`
 	AccessList *types2.AccessList `json:"accessList,omitempty"`
@@ -107,6 +113,26 @@ func (tx *DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
+func (tx DepositTx) MarshalJSON() ([]byte, error) {
+	var enc txJSON
+	// These are set for all tx types.
+	enc.Hash = tx.Hash()
+	enc.Type = hexutil.Uint64(tx.Type())
+	enc.ChainID = (*hexutil.Big)(libcommon.Big0)
+	enc.Gas = (*hexutil.Uint64)(&tx.Gas)
+	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
+	enc.Data = (*hexutility.Bytes)(&tx.Data)
+	enc.To = tx.To
+	enc.SourceHash = &tx.SourceHash
+	enc.From = &tx.From
+	if tx.Mint != nil {
+		enc.Mint = (*hexutil.Big)(tx.Mint.ToBig())
+	}
+	enc.IsSystemTx = &tx.IsSystemTransaction
+	// other fields will show up as null.
+	return json.Marshal(&enc)
+}
+
 func toBlobTxJSON(tx *BlobTx) *txJSON {
 	var enc txJSON
 	// These are set for all tx types.
@@ -172,6 +198,12 @@ func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 		return tx, nil
 	case DynamicFeeTxType:
 		tx := &DynamicFeeTransaction{}
+		if err = tx.UnmarshalJSON(input); err != nil {
+			return nil, err
+		}
+		return tx, nil
+	case DepositTxType:
+		tx := &DepositTx{}
 		if err = tx.UnmarshalJSON(input); err != nil {
 			return nil, err
 		}
@@ -408,6 +440,62 @@ func (tx *DynamicFeeTransaction) UnmarshalJSON(input []byte) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (tx *DepositTx) UnmarshalJSON(input []byte) error {
+	var dec txJSON
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	if dec.AccessList != nil || dec.FeeCap != nil || dec.Tip != nil {
+		return errors.New("unexpected field(s) in deposit transaction")
+	}
+	if dec.GasPrice != nil && dec.GasPrice.ToInt().Cmp(libcommon.Big0) != 0 {
+		return errors.New("deposit transaction GasPrice must be 0")
+	}
+	if (dec.V != nil && dec.V.ToInt().Cmp(libcommon.Big0) != 0) ||
+		(dec.R != nil && dec.R.ToInt().Cmp(libcommon.Big0) != 0) ||
+		(dec.S != nil && dec.S.ToInt().Cmp(libcommon.Big0) != 0) {
+		return errors.New("deposit transaction signature must be 0 or unset")
+	}
+	if dec.To != nil {
+		tx.To = dec.To
+	}
+	if dec.Gas == nil {
+		return errors.New("missing required field 'gas' in transaction")
+	}
+	tx.Gas = uint64(*dec.Gas)
+	if dec.Value == nil {
+		return errors.New("missing required field 'value' in transaction")
+	}
+	var overflow bool
+	tx.Value, overflow = uint256.FromBig(dec.Value.ToInt())
+	if overflow {
+		return errors.New("'value' in transaction does not fit in 256 bits")
+	}
+	// mint may be omitted or nil if there is nothing to mint.
+	tx.Mint, overflow = uint256.FromBig(dec.Mint.ToInt())
+	if overflow {
+		return errors.New("'mint' in transaction does not fit in 256 bits")
+	}
+	if dec.Data == nil {
+		return errors.New("missing required field 'input' in transaction")
+	}
+	tx.Data = *dec.Data
+	if dec.From == nil {
+		return errors.New("missing required field 'from' in transaction")
+	}
+	tx.From = *dec.From
+	if dec.SourceHash == nil {
+		return errors.New("missing required field 'sourceHash' in transaction")
+	}
+	tx.SourceHash = *dec.SourceHash
+	// IsSystemTx may be omitted. Defaults to false.
+	if dec.IsSystemTx != nil {
+		tx.IsSystemTransaction = *dec.IsSystemTx
+	}
+	// nonce is not checked becaues depositTx has no nonce field.
 	return nil
 }
 

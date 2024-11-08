@@ -86,6 +86,12 @@ type HttpCfg struct {
 	ReturnDataLimit             int  // Maximum number of bytes returned from calls (like eth_call)
 	AllowUnprotectedTxs         bool // Whether to allow non EIP-155 protected transactions  txs over RPC
 	MaxGetProofRewindBlockCount int  //Max GetProof rewind block count
+
+	// Optimism
+	RollupSequencerHTTP        string
+	RollupHistoricalRPC        string
+	RollupHistoricalRPCTimeout time.Duration
+
 	// Ots API
 	OtsMaxPageSize uint64
 

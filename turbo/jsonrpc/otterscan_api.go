@@ -128,6 +128,7 @@ func (api *OtterscanAPIImpl) runTracer(ctx context.Context, tx kv.Tx, hash commo
 	if err != nil {
 		return nil, err
 	}
+
 	engine := api.engine()
 
 	msg, blockCtx, txCtx, ibs, _, err := transactions.ComputeTxEnv(ctx, engine, block, chainConfig, api._blockReader, tx, int(txIndex), api.historyV3(tx), false)
@@ -325,9 +326,20 @@ func (api *OtterscanAPIImpl) searchTransactionsBeforeV3(tx kv.TemporalTx, ctx co
 		if err != nil {
 			return nil, err
 		}
-		rpcTx := NewRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee)
+		var rpcTx *RPCTransaction
+		var receipt *types.Receipt
+		if chainConfig.IsOptimism() {
+			receipts := rawdb.ReadRawReceipts(tx, blockNum)
+			if len(receipts) <= txIndex {
+				return nil, fmt.Errorf("block has less receipts than expected: %d <= %d, block: %d", len(receipts), txIndex, blockNum)
+			}
+			receipt = receipts[txIndex]
+			rpcTx = NewRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee, receipt)
+		} else {
+			rpcTx = NewRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee, nil)
+		}
 		txs = append(txs, rpcTx)
-		receipt := &types.Receipt{
+		receipt = &types.Receipt{
 			Type: txn.Type(), CumulativeGasUsed: res.UsedGas,
 			TransactionIndex: uint(txIndex),
 			BlockNumber:      header.Number, BlockHash: blockHash, Logs: rawLogs,
@@ -482,7 +494,8 @@ func delegateGetBlockByNumber(tx kv.Tx, b *types.Block, number rpc.BlockNumber, 
 		return nil, err
 	}
 	additionalFields := make(map[string]interface{})
-	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields)
+	receipts := rawdb.ReadRawReceipts(tx, uint64(number.Int64()))
+	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields, receipts)
 	if !inclTx {
 		delete(response, "transactions") // workaround for https://github.com/ledgerwatch/erigon/issues/4989#issuecomment-1218415666
 	}

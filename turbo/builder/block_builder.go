@@ -26,7 +26,6 @@ func NewBlockBuilder(build BlockBuilderFunc, param *core.BlockBuilderParameters)
 	builder.syncCond = sync.NewCond(new(sync.Mutex))
 
 	go func() {
-		log.Info("Building block...")
 		t := time.Now()
 		result, err := build(param, &builder.interrupt)
 		if err != nil {

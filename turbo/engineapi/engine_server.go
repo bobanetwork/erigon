@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon/cl/clparams"
+	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/ethutils"
 
 	"github.com/ledgerwatch/log/v3"
@@ -31,7 +33,9 @@ import (
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/merge"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/types"
+	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/engineapi/engine_block_downloader"
 	"github.com/ledgerwatch/erigon/turbo/engineapi/engine_helpers"
@@ -47,6 +51,7 @@ type EngineServer struct {
 	hd              *headerdownload.HeaderDownload
 	blockDownloader *engine_block_downloader.EngineBlockDownloader
 	config          *chain.Config
+	ethConfig       *ethconfig.Config
 	// Block proposing for proof-of-stake
 	proposing        bool
 	test             bool
@@ -55,22 +60,26 @@ type EngineServer struct {
 	chainRW eth1_chain_reader.ChainReaderWriterEth1
 	lock    sync.Mutex
 	logger  log.Logger
+
+	nodeCloser func() error
 }
 
 const fcuTimeout = 1000 // according to mathematics: 1000 millisecods = 1 second
 
 func NewEngineServer(logger log.Logger, config *chain.Config, executionService execution.ExecutionClient,
 	hd *headerdownload.HeaderDownload,
-	blockDownloader *engine_block_downloader.EngineBlockDownloader, test bool, proposing bool) *EngineServer {
+	blockDownloader *engine_block_downloader.EngineBlockDownloader, test bool, proposing bool, ethConfig *ethconfig.Config, nodeCloser func() error) *EngineServer {
 	chainRW := eth1_chain_reader.NewChainReaderEth1(config, executionService, fcuTimeout)
 	return &EngineServer{
 		logger:           logger,
 		config:           config,
+		ethConfig:        ethConfig,
 		executionService: executionService,
 		blockDownloader:  blockDownloader,
 		chainRW:          chainRW,
 		proposing:        proposing,
 		hd:               hd,
+		nodeCloser:       nodeCloser,
 	}
 }
 
@@ -86,8 +95,9 @@ func (e *EngineServer) Start(
 	eth rpchelper.ApiBackend,
 	txPool txpool.TxpoolClient,
 	mining txpool.MiningClient,
+	seqRPCService, historicalRPCService *rpc.Client,
 ) {
-	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs)
+	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs, seqRPCService, historicalRPCService)
 
 	ethImpl := jsonrpc.NewEthAPI(base, db, eth, txPool, mining, httpConfig.Gascap, httpConfig.Feecap, httpConfig.ReturnDataLimit, httpConfig.AllowUnprotectedTxs, httpConfig.MaxGetProofRewindBlockCount, httpConfig.WebsocketSubscribeLogsChannelSize, e.logger)
 
@@ -423,24 +433,38 @@ func (s *EngineServer) getPayload(ctx context.Context, payloadId uint64, version
 	data := resp.Data
 
 	ts := data.ExecutionPayload.Timestamp
-	if (!s.config.IsCancun(ts) && version >= clparams.DenebVersion) ||
-		(s.config.IsCancun(ts) && version < clparams.DenebVersion) {
+	if s.config.IsCancun(ts) && version < clparams.DenebVersion {
 		return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
 	}
 
-	return &engine_types.GetPayloadResponse{
+	response := engine_types.GetPayloadResponse{
 		ExecutionPayload: engine_types.ConvertPayloadFromRpc(data.ExecutionPayload),
 		BlockValue:       (*hexutil.Big)(gointerfaces.ConvertH256ToUint256Int(data.BlockValue).ToBig()),
 		BlobsBundle:      engine_types.ConvertBlobsFromRpc(data.BlobsBundle),
-	}, nil
+	}
+	if s.config.IsOptimism() && s.config.IsCancun(ts) && version >= clparams.DenebVersion {
+		if data.ParentBeaconBlockRoot == nil {
+			panic("missing ParentBeaconBlockRoot in Ecotone block")
+		}
+		parentBeaconBlockRoot := libcommon.Hash(gointerfaces.ConvertH256ToHash(data.ParentBeaconBlockRoot))
+		response.ParentBeaconBlockRoot = &parentBeaconBlockRoot
+	}
+
+	return &response, nil
 }
 
 // engineForkChoiceUpdated either states new block head or request the assembling of a new block
 func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *engine_types.ForkChoiceState, payloadAttributes *engine_types.PayloadAttributes, version clparams.StateVersion,
 ) (*engine_types.ForkChoiceUpdatedResponse, error) {
-	status, err := s.getQuickPayloadStatusIfPossible(ctx, forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
-	if err != nil {
-		return nil, err
+	var status *engine_types.PayloadStatus
+	var err error
+	// In the Optimism case, we allow arbitrary rewinding of the safe block
+	// hash, so we skip the path which might short-circuit that
+	if s.config.Optimism == nil {
+		status, err = s.getQuickPayloadStatusIfPossible(ctx, forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -496,12 +520,38 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if headHeader.Time >= timestamp {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
+	txs := make([][]byte, len(payloadAttributes.Transactions))
+	for i, tx := range payloadAttributes.Transactions {
+		txs[i] = tx
+	}
+	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
+		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	}
+
+	var eip1559Params []byte
+	if s.config.Optimism != nil {
+		if payloadAttributes.GasLimit == nil {
+			return nil, &engine_helpers.InvalidPayloadAttributesGasLmitErr
+		}
+		if s.config.IsHolocene(payloadAttributes.Timestamp.Uint64()) {
+			if err := misc.ValidateHolocene1559Params(payloadAttributes.EIP1559Params); err != nil {
+				return nil, &engine_helpers.InvalidPayloadAttributesErr
+			}
+			eip1559Params = bytes.Clone(payloadAttributes.EIP1559Params)
+		} else if len(payloadAttributes.EIP1559Params) != 0 {
+			return nil, &engine_helpers.InvalidPayloadAttributesEIP1559Err
+		}
+	}
 
 	req := &execution.AssembleBlockRequest{
 		ParentHash:            gointerfaces.ConvertHashToH256(forkchoiceState.HeadHash),
 		Timestamp:             timestamp,
 		PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
+		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
+		Transactions:          txs,
+		NoTxPool:              payloadAttributes.NoTxPool,
+		Eip_1559Params:        eip1559Params,
 	}
 
 	if version >= clparams.CapellaVersion {
@@ -519,6 +569,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if resp.Busy {
 		return nil, errors.New("[ForkChoiceUpdated]: execution service is busy, cannot assemble blocks")
 	}
+
 	return &engine_types.ForkChoiceUpdatedResponse{
 		PayloadStatus: &engine_types.PayloadStatus{
 			Status:          engine_types.ValidStatus,
@@ -656,6 +707,80 @@ func (e *EngineServer) ExchangeTransitionConfigurationV1(ctx context.Context, be
 		TerminalBlockHash:       libcommon.Hash{},
 		TerminalBlockNumber:     (*hexutil.Big)(libcommon.Big0),
 	}, nil
+}
+
+func (e *EngineServer) SignalSuperchainV1(ctx context.Context, signal *engine_types.SuperchainSignal) (params.ProtocolVersion, error) {
+	if signal == nil {
+		log.Info("Received empty superchain version signal", "local", params.OPStackSupport)
+		return params.OPStackSupport, nil
+	}
+
+	// log any warnings/info
+	logger := log.New("local", params.OPStackSupport, "required", signal.Required, "recommended", signal.Recommended)
+	LogProtocolVersionSupport(logger, params.OPStackSupport, signal.Recommended, "recommended")
+	LogProtocolVersionSupport(logger, params.OPStackSupport, signal.Required, "required")
+
+	if err := e.HandleRequiredProtocolVersion(signal.Required); err != nil {
+		log.Error("Failed to handle required protocol version", "err", err, "required", signal.Required)
+		return params.OPStackSupport, err
+	}
+
+	return params.OPStackSupport, nil
+}
+
+// HandleRequiredProtocolVersion handles the protocol version signal. This implements opt-in halting,
+// the protocol version data is already logged and metered when signaled through the Engine API.
+func (e *EngineServer) HandleRequiredProtocolVersion(required params.ProtocolVersion) error {
+	var needLevel int
+	switch e.ethConfig.RollupHaltOnIncompatibleProtocolVersion {
+	case "major":
+		needLevel = 3
+	case "minor":
+		needLevel = 2
+	case "patch":
+		needLevel = 1
+	default:
+		return nil // do not consider halting if not configured to
+	}
+	haveLevel := 0
+	switch params.OPStackSupport.Compare(required) {
+	case params.OutdatedMajor:
+		haveLevel = 3
+	case params.OutdatedMinor:
+		haveLevel = 2
+	case params.OutdatedPatch:
+		haveLevel = 1
+	}
+	if haveLevel >= needLevel { // halt if we opted in to do so at this granularity
+		log.Error("Opted to halt, unprepared for protocol change", "required", required, "local", params.OPStackSupport)
+		return e.nodeCloser()
+	}
+	return nil
+}
+
+func LogProtocolVersionSupport(logger log.Logger, local, other params.ProtocolVersion, name string) {
+	switch local.Compare(other) {
+	case params.AheadMajor:
+		logger.Info(fmt.Sprintf("Ahead with major %s protocol version change", name))
+	case params.AheadMinor, params.AheadPatch, params.AheadPrerelease:
+		logger.Debug(fmt.Sprintf("Ahead with compatible %s protocol version change", name))
+	case params.Matching:
+		logger.Debug(fmt.Sprintf("Latest %s protocol version is supported", name))
+	case params.OutdatedMajor:
+		logger.Error(fmt.Sprintf("Outdated with major %s protocol change", name))
+	case params.OutdatedMinor:
+		logger.Warn(fmt.Sprintf("Outdated with minor backward-compatible %s protocol change", name))
+	case params.OutdatedPatch:
+		logger.Info(fmt.Sprintf("Outdated with support backward-compatible %s protocol change", name))
+	case params.OutdatedPrerelease:
+		logger.Debug(fmt.Sprintf("New %s protocol pre-release is available", name))
+	case params.DiffBuild:
+		logger.Debug(fmt.Sprintf("Ignoring %s protocolversion signal, local build is different", name))
+	case params.DiffVersionType:
+		logger.Warn(fmt.Sprintf("Failed to recognize %s protocol version signal version-type", name))
+	case params.EmptyVersion:
+		logger.Debug(fmt.Sprintf("No %s protocol version available to check", name))
+	}
 }
 
 // Returns an array of execution payload bodies referenced by their block hashes

@@ -31,6 +31,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 )
 
 //lint:ignore ST1012 EOL is not an error.
@@ -201,6 +202,8 @@ func makeDecoder(typ reflect.Type, tags tags) (dec decoder, err error) {
 		return decodeUint256, nil
 	case typ.AssignableTo(uint256Int):
 		return decodeUint256NoPtr, nil
+	case typ == reflect.TypeOf(hexutil.Big{}):
+		return decodeHexBigNoPtr, nil
 	case kind == reflect.Ptr:
 		return makePtrDecoder(typ, tags)
 	case reflect.PtrTo(typ).Implements(decoderInterface):
@@ -261,6 +264,16 @@ func decodeString(s *Stream, val reflect.Value) error {
 
 func decodeBigIntNoPtr(s *Stream, val reflect.Value) error {
 	return decodeBigInt(s, val.Addr())
+}
+
+func decodeHexBigNoPtr(s *Stream, val reflect.Value) error {
+	var bi big.Int
+	err := decodeBigInt(s, reflect.ValueOf(&bi))
+	if err == nil {
+		hb := val.Addr().Interface().(*hexutil.Big)
+		*hb = (hexutil.Big)(bi)
+	}
+	return err
 }
 
 func decodeBigInt(s *Stream, val reflect.Value) error {

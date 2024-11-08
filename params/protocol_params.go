@@ -22,6 +22,13 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common"
 )
 
+var (
+	// The base fee portion of the transaction fee accumulates at this predeploy
+	OptimismBaseFeeRecipient = common.HexToAddress("0x4200000000000000000000000000000000000019")
+	// The L1 portion of the transaction fee accumulates at this predeploy
+	OptimismL1FeeRecipient = common.HexToAddress("0x420000000000000000000000000000000000001A")
+)
+
 const (
 	GasLimitBoundDivisor uint64 = 1024               // The bound divisor of the gas limit, used in update calculations.
 	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
@@ -152,6 +159,8 @@ const (
 	Bn256PairingBaseGasIstanbul      uint64 = 45000  // Base price for an elliptic curve pairing check
 	Bn256PairingPerPointGasByzantium uint64 = 80000  // Byzantium per-point price for an elliptic curve pairing check
 	Bn256PairingPerPointGasIstanbul  uint64 = 34000  // Per-point price for an elliptic curve pairing check
+
+	Bn256PairingMaxInputSizeGranite uint64 = 112687 // Maximum input size for an elliptic curve pairing check
 
 	Bls12381G1AddGas          uint64 = 500   // Price for BLS12-381 elliptic curve G1 point addition
 	Bls12381G1MulGas          uint64 = 12000 // Price for BLS12-381 elliptic curve G1 point scalar multiplication

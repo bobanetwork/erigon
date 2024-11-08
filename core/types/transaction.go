@@ -51,6 +51,7 @@ const (
 	AccessListTxType
 	DynamicFeeTxType
 	BlobTxType
+	DepositTxType = 0x7e
 )
 
 // Transaction is an Ethereum transaction.
@@ -90,7 +91,8 @@ type Transaction interface {
 	GetSender() (libcommon.Address, bool)
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
-	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwise returns itself.
+	RollupCostData() types2.RollupCostData
+	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwiwes returns itself.
 }
 
 // TransactionMisc is collection of miscellaneous fields for transaction that is supposed to be embedded into concrete
@@ -99,6 +101,53 @@ type TransactionMisc struct {
 	// caches
 	hash atomic.Value //nolint:structcheck
 	from atomic.Value
+
+	// cache how much gas the tx takes on L1 for its share of rollup data
+	rollupGas atomic.Value
+}
+
+type rollupGasCounter struct {
+	zeroes     uint64
+	ones       uint64
+	fastLzSize uint64
+}
+
+func (r *rollupGasCounter) Write(p []byte) (int, error) {
+	for _, byt := range p {
+		if byt == 0 {
+			r.zeroes++
+		} else {
+			r.ones++
+		}
+	}
+	r.fastLzSize = uint64(types2.FlzCompressLen(p))
+	return len(p), nil
+}
+
+// computeRollupGas is a helper method to compute and cache the rollup gas cost for any tx type
+func (tm *TransactionMisc) computeRollupGas(tx interface {
+	MarshalBinary(w io.Writer) error
+	Type() byte
+}) types2.RollupCostData {
+	if tx.Type() == DepositTxType {
+		return types2.RollupCostData{}
+	}
+	if v := tm.rollupGas.Load(); v != nil {
+		return v.(types2.RollupCostData)
+	}
+	var c rollupGasCounter
+	var buf bytes.Buffer
+	err := tx.MarshalBinary(&buf)
+	if err != nil { // Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
+		log.Error("failed to encode tx for L1 cost computation", "err", err)
+	}
+	_, err = c.Write(buf.Bytes())
+	if err != nil {
+		log.Error("failed to compute rollup cost data", "err", err)
+	}
+	total := types2.RollupCostData{Zeroes: c.zeroes, Ones: c.ones, FastLzSize: c.fastLzSize}
+	tm.rollupGas.Store(total)
+	return total
 }
 
 // RLP-marshalled legacy transactions and binary-marshalled (not wrapped into an RLP string) typed (EIP-2718) transactions
@@ -181,6 +230,13 @@ func UnmarshalTransactionFromBinary(data []byte, blobTxnsAreWrappedWithBlobs boo
 		return t, nil
 	case DynamicFeeTxType:
 		t := &DynamicFeeTransaction{}
+		if err := t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		return t, nil
+	case DepositTxType:
+		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
+		t := &DepositTx{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -392,6 +448,7 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
+	txType           byte
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64
@@ -406,6 +463,10 @@ type Message struct {
 	checkNonce       bool
 	isFree           bool
 	blobHashes       []libcommon.Hash
+
+	isSystemTx bool
+	mint       *uint256.Int
+	l1CostGas  types2.RollupCostData
 }
 
 func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64,
@@ -472,6 +533,11 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 
 	m.gasLimit = gas
 }
+
+func (m Message) IsSystemTx() bool                      { return m.isSystemTx }
+func (m Message) IsDepositTx() bool                     { return m.txType == DepositTxType }
+func (m Message) Mint() *uint256.Int                    { return m.mint }
+func (m Message) RollupCostData() types2.RollupCostData { return m.l1CostGas }
 
 func (m Message) BlobGas() uint64 { return fixedgas.BlobGasPerBlob * uint64(len(m.blobHashes)) }
 

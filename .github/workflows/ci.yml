@@ -5,10 +5,12 @@ on:
       - devel
       - alpha
       - 'release/**'
+      - boba-develop
   pull_request:
     branches:
       - devel
       - alpha
+      - boba-develop
       - 'release/**'
     types:
       - opened

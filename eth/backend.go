@@ -164,6 +164,9 @@ type Ethereum struct {
 	miningRPC          txpoolproto.MiningServer
 	stateChangesClient txpool.StateChangesClient
 
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
+
 	miningSealingQuit chan struct{}
 	pendingBlocks     chan *types.Block
 	minedBlocks       chan *types.Block
@@ -301,7 +304,18 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			genesisSpec = nil
 		}
 		var genesisErr error
-		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverridePragueTime, tmpdir, logger)
+		overrides := &core.ChainOverrides{
+			OverrideCancunTime:   config.OverrideCancunTime,
+			OverrideShanghaiTime: config.OverrideShanghaiTime,
+			// Optimism
+			OverrideOptimismCanyonTime:   config.OverrideOptimismCanyonTime,
+			OverrideOptimismEcotoneTime:  config.OverrideOptimismEcotoneTime,
+			OverrideOptimismFjordTime:    config.OverrideOptimismFjordTime,
+			OverrideOptimismGraniteTime:  config.OverrideOptimismGraniteTime,
+			OverrideOptimismHoloceneTime: config.OverrideOptimismHoloceneTime,
+			OverridePragueTime:           config.OverridePragueTime,
+		}
+		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, overrides, tmpdir, logger)
 		if _, ok := genesisErr.(*chain.ConfigCompatError); genesisErr != nil && !ok {
 			return genesisErr
 		}
@@ -313,6 +327,27 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 	backend.chainConfig = chainConfig
 	backend.genesisBlock = genesis
 	backend.genesisHash = genesis.Hash()
+
+	if chainConfig.IsOptimism() {
+		if chainConfig.RegolithTime == nil {
+			log.Warn("Optimism RegolithTime has not been set")
+		}
+		if chainConfig.CanyonTime == nil {
+			log.Warn("Optimism CanyonTime has not been set")
+		}
+		if chainConfig.EcotoneTime == nil {
+			log.Warn("Optimism EcotoneTime has not been set")
+		}
+		if chainConfig.FjordTime == nil {
+			log.Warn("Optimism FjordTime has not been set")
+		}
+		if chainConfig.GraniteTime == nil {
+			log.Warn("Optimism GraniteTime has not been set")
+		}
+		if chainConfig.HoloceneTime == nil {
+			log.Warn("Optimism HoloceneTime has not been set")
+		}
+	}
 
 	setBorDefaultMinerGasPrice(chainConfig, config, logger)
 	setBorDefaultTxPoolPriceLimit(chainConfig, config.TxPool, logger)
@@ -615,6 +650,25 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		return nil, err
 	}
 
+	// Setup sequencer and hsistorical RPC relay services
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
 	config.TxPool.NoGossip = config.DisableTxPoolGossip
 	var miningRPC txpoolproto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
@@ -626,9 +680,13 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 
 		backend.newTxs = make(chan libtypes.Announcements, 1024)
 		//defer close(newTxs)
+		config.TxPool.Optimism = chainConfig.Optimism != nil
 		backend.txPoolDB, backend.txPool, backend.txPoolFetch, backend.txPoolSend, backend.txPoolGrpcServer, err = txpooluitl.AllComponents(
 			ctx, config.TxPool, kvcache.NewDummy(), backend.newTxs, backend.chainDB, backend.sentriesClient.Sentries(), stateDiffClient, misc.Eip1559FeeCalculator, logger,
 		)
+		// TODO(jky) this is a bit of a hack, and should probably be passed as a
+		// parameter through the AllComponents call above
+		backend.txPool.SetInitialBlockGasLimit(config.Miner.GasLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -686,9 +744,11 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder,
 			logger)
 		// We start the mining step
+		log.Debug("Starting assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir, logger); err != nil {
 			return nil, err
 		}
+		log.Debug("Finished assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		block := <-miningStatePos.MiningResultPOSCh
 		return block, nil
 	}
@@ -831,7 +891,9 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			backend.sentriesClient.Bd, backend.sentriesClient.BroadcastNewBlock, backend.sentriesClient.SendBodyRequest, blockReader,
 			chainKv, chainConfig, tmpdir, config.Sync.BodyDownloadTimeoutSeconds),
 		false,
-		config.Miner.EnabledPOS)
+		config.Miner.EnabledPOS,
+		config,
+		stack.Close)
 	backend.engineBackendRPC = engineBackendRPC
 
 	var executionEngine executionclient.ExecutionEngine
@@ -965,7 +1027,7 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config, chainConfig 
 		}
 	}
 
-	s.apiList = jsonrpc.APIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, &httpRpcCfg, s.engine, s.logger)
+	s.apiList = jsonrpc.APIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, &httpRpcCfg, s.engine, s.seqRPCService, s.historicalRPCService, s.logger)
 
 	if config.SilkwormRpcDaemon && httpRpcCfg.Enabled {
 		interface_log_settings := silkworm.RpcInterfaceLogSettings{
@@ -999,7 +1061,7 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config, chainConfig 
 	}
 
 	if chainConfig.Bor == nil {
-		go s.engineBackendRPC.Start(ctx, &httpRpcCfg, s.chainDB, s.blockReader, ff, stateCache, s.agg, s.engine, ethRpcClient, txPoolRpcClient, miningRpcClient)
+		go s.engineBackendRPC.Start(ctx, &httpRpcCfg, s.chainDB, s.blockReader, ff, stateCache, s.agg, s.engine, ethRpcClient, txPoolRpcClient, miningRpcClient, s.seqRPCService, s.historicalRPCService)
 	}
 
 	// Register the backend on the node
@@ -1557,6 +1619,13 @@ func (s *Ethereum) Stop() error {
 		if err := s.silkworm.Close(); err != nil {
 			s.logger.Error("silkworm.Close error", "err", err)
 		}
+	}
+
+	if s.seqRPCService != nil {
+		s.seqRPCService.Close()
+	}
+	if s.historicalRPCService != nil {
+		s.historicalRPCService.Close()
 	}
 
 	return nil
