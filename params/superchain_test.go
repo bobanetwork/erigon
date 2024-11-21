@@ -18,6 +18,7 @@ type hardforkConfig struct {
 	EcotoneTime              *big.Int
 	FjordTime                *big.Int
 	GraniteTime              *big.Int
+	HoloceneTime             *big.Int
 	EIP1559Elasticity        uint64
 	EIP1559Denominator       uint64
 	EIP1559DenominatorCanyon uint64
@@ -78,6 +79,7 @@ var bobaSepoliaDev0Cfg = hardforkConfig{
 	EcotoneTime:              big.NewInt(1724692141),
 	FjordTime:                big.NewInt(1724692150),
 	GraniteTime:              big.NewInt(1724914800),
+	HoloceneTime:             big.NewInt(1732435200),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -93,6 +95,7 @@ var opSepoliaCfg = hardforkConfig{
 	EcotoneTime:              big.NewInt(1708534800),
 	FjordTime:                big.NewInt(1716998400),
 	GraniteTime:              big.NewInt(1723478400),
+	HoloceneTime:             big.NewInt(1732633200),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -138,6 +141,7 @@ func TestChainConfigByOpStackChainName(t *testing.T) {
 		require.Equal(t, expectedHarhardforkCfg.EcotoneTime, gotCfg.EcotoneTime)
 		require.Equal(t, expectedHarhardforkCfg.FjordTime, gotCfg.FjordTime)
 		require.Equal(t, expectedHarhardforkCfg.GraniteTime, gotCfg.GraniteTime)
+		require.Equal(t, expectedHarhardforkCfg.HoloceneTime, gotCfg.HoloceneTime)
 
 		// EIP-1559
 		require.Equal(t, expectedHarhardforkCfg.EIP1559Elasticity, gotCfg.Optimism.EIP1559Elasticity)

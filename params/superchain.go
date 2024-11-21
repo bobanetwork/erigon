@@ -129,6 +129,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		EcotoneTime:                   nil,
 		FjordTime:                     nil,
 		GraniteTime:                   nil,
+		HoloceneTime:                  nil,
 		TerminalTotalDifficulty:       common.Big0,
 		TerminalTotalDifficultyPassed: true,
 		Ethash:                        nil,
@@ -148,6 +149,9 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 	}
 	if chConfig.GraniteTime != nil {
 		out.GraniteTime = new(big.Int).SetUint64(*chConfig.GraniteTime)
+	}
+	if chConfig.HoloceneTime != nil {
+		out.HoloceneTime = new(big.Int).SetUint64(*chConfig.HoloceneTime)
 	}
 	if chConfig.Optimism != nil {
 		out.Optimism = &chain.OptimismConfig{
