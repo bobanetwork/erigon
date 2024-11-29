@@ -125,10 +125,15 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 			depTS := types.NewTransactionsFixedOrder(txs)
 
-			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			// Note, we do not allow early interrupt of adding deposit txes to the
+			// block, as they must all be included.
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, nil, cfg.payloadId, logger)
 			log.Debug("addTransactionsToMiningBlock (deposit) result", "err", err, "logs", logs)
 			if err != nil {
 				return err
+			}
+			if len(current.Txs) != len(current.Deposits) {
+				return fmt.Errorf("all deposit transactions must commit but only %d of %d did", len(current.Txs), len(txs))
 			}
 		}
 
