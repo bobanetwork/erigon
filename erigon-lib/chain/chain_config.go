@@ -71,6 +71,17 @@ var (
 	BnbTestnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 	// Bnb Testnet genesis root
 	BnbTestnetGenesisRoot = "0xdd0a18054de6e995f2c66f3e3aae590df9cbee1c7e5f602b8bcf5a0c3b1a2f46"
+
+	// Bnb Mainnet
+	BnbMainnetChainId = big.NewInt(56288)
+	// Bnb Mainnet genesis gas limit
+	BnbMainnetGenesisGasLimit = 11000000
+	// Bnb Mainnet genesis block coinbase
+	BnbMainnetGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Bnb Mainnet genesis block extra data
+	BnbMainnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Bnb Mainnet genesis root
+	BnbMainnetGenesisRoot = "0x5e4aa1832106e099383e08736b8897695635d39c2ec0166b7a06a45482f9685a"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -385,6 +396,10 @@ func (c *Config) IsBobaLegacyBlock(num uint64) bool {
 	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
 		return c.BedrockBlock.Uint64() > num
 	}
+	// Bnb Mainnet
+	if BnbMainnetChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
 	return false
 }
 
@@ -404,6 +419,10 @@ func (c *Config) GetBobaGenesisGasLimit() int {
 	// Bnb Testnet
 	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
 		return BnbTestnetGenesisGasLimit
+	}
+	// Bnb Mainnet
+	if BnbMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbMainnetGenesisGasLimit
 	}
 	return 11000000
 }
@@ -425,6 +444,10 @@ func (c *Config) GetBobaGenesisCoinbase() string {
 	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
 		return BnbTestnetGenesisCoinbase
 	}
+	// Bnb Mainnet
+	if BnbMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbMainnetGenesisCoinbase
+	}
 	return "0x0000000000000000000000000000000000000000"
 }
 
@@ -445,6 +468,10 @@ func (c *Config) GetBobaGenesisExtraData() string {
 	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
 		return BnbTestnetGenesisExtraData
 	}
+	// Bnb Mainnet
+	if BnbMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbMainnetGenesisExtraData
+	}
 	return ""
 }
 
@@ -464,6 +491,10 @@ func (c *Config) GetBobaGenesisRoot() string {
 	// Bnb Testnet
 	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
 		return BnbTestnetGenesisRoot
+	}
+	// Bnb Mainnet
+	if BnbMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbMainnetGenesisRoot
 	}
 	return ""
 }
