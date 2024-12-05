@@ -293,4 +293,4 @@ replace github.com/anacrolix/torrent => github.com/erigontech/torrent v1.54.2-al
 
 replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
 
-replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/bobanetwork/superchain-registry/superchain v0.0.0-20241205204742-bcbb45646337
+replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/bobanetwork/superchain-registry/superchain v0.0.0-20241205210931-5e9b6db19ee3
