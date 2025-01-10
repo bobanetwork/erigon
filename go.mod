@@ -8,8 +8,6 @@ require (
 	github.com/erigontech/silkworm-go v0.18.0
 )
 
-replace github.com/erigontech/erigon-lib => ./erigon-lib
-
 require (
 	gfx.cafe/util/go/generic v0.0.0-20230721185457-c559e86c829c
 	github.com/99designs/gqlgen v0.17.40
@@ -244,7 +242,7 @@ require (
 	github.com/pion/transport/v2 v2.2.10 // indirect
 	github.com/pion/turn/v2 v2.1.6 // indirect
 	github.com/pion/webrtc/v3 v3.3.5 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -300,6 +298,6 @@ replace github.com/erigontech/erigon-snapshot => github.com/ledgerwatch/erigon-s
 
 replace github.com/erigontech/interfaces => github.com/ledgerwatch/interfaces v0.0.0-20241024161200-024ffe1cabff
 
-replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
+replace github.com/erigontech/erigon-lib => ./erigon-lib
 
 replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/bobanetwork/superchain-registry/superchain v0.0.0-20250107213715-cb3c5cb83e2e
