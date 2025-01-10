@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ledgerwatch/erigon-lib/opstack"
+	"github.com/erigontech/erigon-lib/opstack"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/erigontech/erigon-lib/log/v3"

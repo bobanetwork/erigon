@@ -6,12 +6,13 @@ import (
 	"sync"
 
 	"github.com/erigontech/erigon-lib/log/v3"
+	"github.com/erigontech/erigon/consensus/misc"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/erigontech/erigon-lib/chain"
 	libcommon "github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/opstack"
+	"github.com/erigontech/erigon-lib/opstack"
 
 	"github.com/erigontech/erigon/cmd/state/exec22"
 	"github.com/erigontech/erigon/consensus"

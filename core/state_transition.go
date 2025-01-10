@@ -346,7 +346,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 	return st.buyGas(gasBailout)
 }
 
-func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*evmtypes.ExecutionResult, error) {
 	if mint := st.msg.Mint(); mint != nil {
 		st.state.AddBalance(st.msg.From(), mint)
 	}
@@ -368,7 +368,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		if st.msg.IsSystemTx() && !st.evm.ChainConfig().IsOptimismRegolith(st.evm.Context.Time) {
 			gasUsed = 0
 		}
-		result = &ExecutionResult{
+		result = &evmtypes.ExecutionResult{
 			UsedGas:    gasUsed,
 			Err:        fmt.Errorf("failed deposit: %w", err),
 			ReturnData: nil,
@@ -391,7 +391,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 //
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
-func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*evmtypes.ExecutionResult, error) {
 	coinbase := st.evm.Context.Coinbase
 
 	senderInitBalance := st.state.GetBalance(st.msg.From()).Clone()
@@ -546,7 +546,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		if st.msg.IsSystemTx() {
 			gasUsed = 0
 		}
-		return &ExecutionResult{
+		return &evmtypes.ExecutionResult{
 			UsedGas:    gasUsed,
 			Err:        vmerr,
 			ReturnData: ret,
@@ -566,7 +566,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	}
 	if st.msg.IsDepositTx() && rules.IsOptimismRegolith {
 		// Skip coinbase payments for deposit tx in Regolith
-		return &ExecutionResult{
+		return &evmtypes.ExecutionResult{
 			UsedGas:    st.gasUsed(),
 			Err:        vmerr,
 			ReturnData: ret,
@@ -620,7 +620,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		}
 	}
 
-	return &ExecutionResult{
+	return &evmtypes.ExecutionResult{
 		UsedGas:    st.gasUsed(),
 		Err:        vmerr,
 		ReturnData: ret,

@@ -181,8 +181,6 @@ func (r DiscardReason) String() string {
 		return "EIP-4844 & 7702 transactions cannot have the form of a create transaction"
 	case TxTypeNotSupported:
 		return types.ErrTxTypeNotSupported.Error()
-	case CreateBlobTxn:
-		return "blob transactions cannot have the form of a create transaction"
 	case NoBlobs:
 		return "blob transactions must have at least one blob"
 	case TooManyBlobs:

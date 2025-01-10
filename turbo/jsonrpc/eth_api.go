@@ -440,7 +440,7 @@ type RPCTransaction struct {
 
 // NewRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int,
+func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int,
 	receipt *types.Receipt) *RPCTransaction {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
@@ -502,13 +502,14 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		}
 
 		if txn.Type() == types.DepositTxType {
-			if t.Mint != nil {
-				result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+			depositTx := txn.(*types.DepositTx)
+			if depositTx.Mint != nil {
+				result.Mint = (*hexutil.Big)(depositTx.Mint.ToBig())
 			}
 			result.ChainID = nil
-			result.SourceHash = &t.SourceHash
-			if t.IsSystemTransaction {
-				result.IsSystemTx = &t.IsSystemTransaction
+			result.SourceHash = &depositTx.SourceHash
+			if depositTx.IsSystemTransaction {
+				result.IsSystemTx = &depositTx.IsSystemTransaction
 			}
 			if receipt != nil && receipt.DepositNonce != nil {
 				result.Nonce = hexutil.Uint64(*receipt.DepositNonce)
@@ -579,7 +580,7 @@ func newRPCPendingTransaction(txn types.Transaction, current *types.Header, conf
 	if current != nil {
 		baseFee = misc.CalcBaseFee(config, current, current.Time+1)
 	}
-	return NewRPCTransaction(tx, common.Hash{}, 0, 0, baseFee, nil)
+	return NewRPCTransaction(txn, common.Hash{}, 0, 0, baseFee, nil)
 }
 
 // newRPCRawTransactionFromBlockIndex returns the bytes of a transaction given a block and a transaction index.

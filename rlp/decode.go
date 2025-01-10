@@ -30,8 +30,8 @@ import (
 
 	"github.com/erigontech/erigon-lib/log/v3"
 
+	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 )
 
 //lint:ignore ST1012 EOL is not an error.

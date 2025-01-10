@@ -147,4 +147,4 @@ replace github.com/anacrolix/torrent => github.com/erigontech/torrent v1.54.2-al
 
 replace github.com/erigontech/erigon-snapshot => github.com/ledgerwatch/erigon-snapshot v1.3.1-0.20240805114253-42da880260bb
 
-replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/op-erigon-interfaces v0.0.0-20241029165724-26728efdc6b9
+// replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/op-erigon-interfaces v0.0.0-20241029165724-26728efdc6b9
