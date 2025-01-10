@@ -72,6 +72,15 @@ var (
 	BorDevnetGenesisHash  = libcommon.HexToHash("0x5a06b25b0c6530708ea0b98a3409290e39dce6be7f558493aeb6e4b99a172a87")
 	GnosisGenesisHash     = libcommon.HexToHash("0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")
 	ChiadoGenesisHash     = libcommon.HexToHash("0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a")
+
+	OPMainnetGenesisHash = libcommon.HexToHash("0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b")
+	OPSepoliaGenesisHash = libcommon.HexToHash("0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d")
+
+	BobaMainnetGenesisHash     = libcommon.HexToHash("0xdcd9e6a8f9973eaa62da2874959cb152faeb4fd6929177bd6335a1a16074ef9c")
+	BobaSepoliaGenesisHash     = libcommon.HexToHash("0xc6171953a6a376ece6e33149686044f24f58a387ce2636a54e391d330b2326b5")
+	BobaSepoliaDev0GenesisHash = libcommon.HexToHash("0xe919706177d2c568ed21a4b443d421c8098b4e453a29bd432258fab3f7fe1d07")
+
+	BobaBnbTestnetGenesisHash = libcommon.HexToHash("0x4d26ddc947c7cea924d5ef272c1a5ef40a1dce5ca2cbbaccad59d33f2505a30d")
 )
 
 var (
@@ -179,7 +188,37 @@ var (
 		Aura:                  &chain.AuRaConfig{},
 	}
 
+	TestOptimismChainConfig = &chain.Config{
+		ChainID:               big.NewInt(1337),
+		Consensus:             chain.EtHashConsensus,
+		HomesteadBlock:        big.NewInt(0),
+		TangerineWhistleBlock: big.NewInt(0),
+		SpuriousDragonBlock:   big.NewInt(0),
+		ByzantiumBlock:        big.NewInt(0),
+		ConstantinopleBlock:   big.NewInt(0),
+		PetersburgBlock:       big.NewInt(0),
+		IstanbulBlock:         big.NewInt(0),
+		MuirGlacierBlock:      big.NewInt(0),
+		BerlinBlock:           big.NewInt(0),
+		Ethash:                new(chain.EthashConfig),
+		Optimism: &chain.OptimismConfig{
+			EIP1559Elasticity:  8,
+			EIP1559Denominator: 1,
+		},
+		BedrockBlock: big.NewInt(1000000000000000000),
+	}
+
 	TestRules = TestChainConfig.Rules(0, 0)
+
+	// This is an Optimism chain config with bedrock starting a block 5, introduced for historical endpoint testing, largely based on the clique config
+	OptimismTestConfig = func() *chain.Config {
+		conf := *AllCliqueProtocolChanges // copy the config
+		conf.Clique = nil
+		conf.TerminalTotalDifficultyPassed = true
+		conf.BedrockBlock = big.NewInt(5)
+		conf.Optimism = &chain.OptimismConfig{EIP1559Elasticity: 50, EIP1559Denominator: 10}
+		return &conf
+	}()
 )
 
 type ConsensusSnapshotConfig struct {
@@ -257,12 +296,30 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 		return &GnosisGenesisHash
 	case networkname.ChiadoChainName:
 		return &ChiadoGenesisHash
+	case networkname.OPMainnetChainName:
+		// cannot use genesis hash from superchain registry because of pre-bedrock blocks
+		return &OPMainnetGenesisHash
+	case networkname.OPSepoliaChainName:
+		return &OPSepoliaGenesisHash
+	case networkname.BobaMainnetChainName:
+		// cannot use genesis hash from superchain registry because of pre-bedrock blocks
+		return &BobaMainnetGenesisHash
+	case networkname.BobaSepoliaChainName:
+		// cannot use genesis hash from superchain registry because of pre-bedrock blocks
+		return &BobaSepoliaGenesisHash
 	default:
+		if opStackChainCfg := OPStackChainConfigByName(chain); opStackChainCfg != nil {
+			genesisHash := libcommon.Hash(opStackChainCfg.Genesis.L2.Hash)
+			return &genesisHash
+		}
 		return nil
 	}
 }
 
 func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
+	if cfg := ChainConfigByOpStackGenesisHash(genesisHash); cfg != nil {
+		return cfg
+	}
 	switch {
 	case genesisHash == MainnetGenesisHash:
 		return MainnetChainConfig
@@ -290,6 +347,9 @@ func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
 }
 
 func NetworkIDByChainName(chain string) uint64 {
+	if opStackChainCfg := OPStackChainConfigByName(chain); opStackChainCfg != nil {
+		return opStackChainCfg.ChainID
+	}
 	config := ChainConfigByChainName(chain)
 	if config == nil {
 		return 0

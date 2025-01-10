@@ -534,6 +534,10 @@ func setEmbeddedRpcDaemon(ctx *cli.Context, cfg *nodecfg.Config, logger log.Logg
 
 		TxPoolApiAddr: ctx.String(utils.TxpoolApiAddrFlag.Name),
 
+		RollupSequencerHTTP:        ctx.String(utils.RollupSequencerHTTPFlag.Name),
+		RollupHistoricalRPC:        ctx.String(utils.RollupHistoricalRPCFlag.Name),
+		RollupHistoricalRPCTimeout: ctx.Duration(utils.RollupHistoricalRPCTimeoutFlag.Name),
+
 		StateCache:          kvcache.DefaultCoherentConfig,
 		RPCSlowLogThreshold: ctx.Duration(utils.RPCSlowFlag.Name),
 	}

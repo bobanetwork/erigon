@@ -55,7 +55,7 @@ func MakeSigner(config *chain.Config, blockNumber uint64, blockTime uint64) *Sig
 		signer.setCode = true
 		signer.chainID.Set(&chainId)
 		signer.chainIDMul.Mul(&chainId, u256.Num2)
-	case config.IsCancun(blockTime):
+	case config.IsCancun(blockTime) && !config.IsOptimism():
 		// All transaction types are still supported
 		signer.protected = true
 		signer.accessList = true
@@ -110,7 +110,7 @@ func LatestSigner(config *chain.Config) *Signer {
 	signer.chainID.Set(chainId)
 	signer.chainIDMul.Mul(chainId, u256.Num2)
 	if config.ChainID != nil {
-		if config.CancunTime != nil {
+		if config.CancunTime != nil && !config.IsOptimism() {
 			signer.blob = true
 		}
 		if config.LondonBlock != nil {
@@ -220,6 +220,8 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 	signChainID := sg.chainID.ToBig() // This is reset to nil if tx is unprotected
 	// recoverPlain below will subract 27 from V
 	switch t := tx.(type) {
+	case *DepositTx:
+		return t.From, nil
 	case *LegacyTx:
 		if !t.Protected() {
 			if !sg.unprotected {
@@ -321,6 +323,22 @@ func (sg Signer) SignatureValues(tx Transaction, sig []byte) (R, S, V *uint256.I
 		// because it indicates that the chain ID was not specified in the tx.
 		chainId := t.GetChainID()
 		if chainId != nil && !chainId.IsZero() && !chainId.Eq(&sg.chainID) {
+			return nil, nil, nil, ErrInvalidChainId
+		}
+		R, S, V = decodeSignature(sig)
+	case *DynamicFeeTransaction:
+		// Check that chain ID of tx matches the signer. We also accept ID zero here,
+		// because it indicates that the chain ID was not specified in the tx.
+		if t.ChainID != nil && !t.ChainID.IsZero() && !t.ChainID.Eq(&sg.chainID) {
+			return nil, nil, nil, ErrInvalidChainId
+		}
+		R, S, V = decodeSignature(sig)
+	case *DepositTx:
+		return nil, nil, nil, fmt.Errorf("deposits do not have a signature")
+	case *BlobTx:
+		// Check that chain ID of tx matches the signer. We also accept ID zero here,
+		// because it indicates that the chain ID was not specified in the tx.
+		if t.ChainID != nil && !t.ChainID.IsZero() && !t.ChainID.Eq(&sg.chainID) {
 			return nil, nil, nil, ErrInvalidChainId
 		}
 		R, S, V = decodeSignature(sig)

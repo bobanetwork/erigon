@@ -89,7 +89,7 @@ func NewNodConfigUrfave(ctx *cli.Context, logger log.Logger) *nodecfg.Config {
 			logger.Info("Starting Erigon on Ethereum mainnet...")
 		}
 	default:
-		logger.Info("Starting Erigon on", "devnet", chain)
+		logger.Info("Starting Erigon on", "chain", chain)
 	}
 
 	nodeConfig := NewNodeConfig()

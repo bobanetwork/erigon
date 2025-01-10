@@ -17,6 +17,7 @@
 package params
 
 import (
+	"math"
 	"math/big"
 	"reflect"
 	"testing"
@@ -103,6 +104,25 @@ func TestCheckCompatible(t *testing.T) {
 	}
 }
 
+func TestConfigRulesRegolith(t *testing.T) {
+	c := &chain.Config{
+		RegolithTime: big.NewInt(500),
+		Optimism:     &chain.OptimismConfig{},
+	}
+	var stamp uint64
+	if r := c.Rules(0, stamp); r.IsOptimismRegolith {
+		t.Errorf("expected %v to not be regolith", stamp)
+	}
+	stamp = 500
+	if r := c.Rules(0, stamp); !r.IsOptimismRegolith {
+		t.Errorf("expected %v to be regolith", stamp)
+	}
+	stamp = math.MaxInt64
+	if r := c.Rules(0, stamp); !r.IsOptimismRegolith {
+		t.Errorf("expected %v to be regolith", stamp)
+	}
+}
+
 func TestGetBurntContract(t *testing.T) {
 	// Ethereum
 	assert.Nil(t, MainnetChainConfig.GetBurntContract(0))
@@ -137,4 +157,31 @@ func TestGetBurntContract(t *testing.T) {
 	addr = AmoyChainConfig.GetBurntContract(0)
 	require.NotNil(t, addr)
 	assert.Equal(t, common.HexToAddress("0x000000000000000000000000000000000000dead"), *addr)
+}
+
+// TODO: remove when superchain-registry is integrated
+// TestCanyonTimestampOnBlockBoundary asserts that Canyon will activate on a block's timestamp.
+// This is critical because the create2Deployer only activates on a block's timestamp.
+func TestCanyonTimestampOnBlockBoundary(t *testing.T) {
+	superchainConfigs := []*chain.Config{}
+	l2BlockTime := 2
+	for _, config := range superchainConfigs {
+		if config.CanyonTime == nil {
+			continue
+		}
+		regolithTime := 0
+		if config.RegolithTime != nil {
+			regolithTime = int(config.RegolithTime.Int64())
+		}
+		canyonTime := int(config.CanyonTime.Int64())
+		if regolithTime > canyonTime {
+			t.Fatalf("Canyon time on superchain %v is less then Regolith time. canyon time: %v, regolith time: %v",
+				config.ChainName, canyonTime, regolithTime)
+		}
+		canyonOffset := canyonTime - regolithTime
+		if canyonOffset%l2BlockTime != 0 {
+			t.Fatalf("Canyon time on superchain %v is not on the block time. canyon time: %v, regolith time: %v, block time: %v",
+				config.ChainName, canyonTime, regolithTime, l2BlockTime)
+		}
+	}
 }

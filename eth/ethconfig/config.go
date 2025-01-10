@@ -50,13 +50,14 @@ var BorDefaultMinerGasPrice = big.NewInt(25 * params.GWei)
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
 var FullNodeGPO = gaspricecfg.Config{
-	Blocks:           20,
-	Default:          big.NewInt(0),
-	Percentile:       60,
-	MaxHeaderHistory: 0,
-	MaxBlockHistory:  0,
-	MaxPrice:         gaspricecfg.DefaultMaxPrice,
-	IgnorePrice:      gaspricecfg.DefaultIgnorePrice,
+	Blocks:                  20,
+	Default:                 big.NewInt(0),
+	Percentile:              60,
+	MaxHeaderHistory:        0,
+	MaxBlockHistory:         0,
+	MaxPrice:                gaspricecfg.DefaultMaxPrice,
+	IgnorePrice:             gaspricecfg.DefaultIgnorePrice,
+	MinSuggestedPriorityFee: gaspricecfg.DefaultMinSuggestedPriorityFee,
 }
 
 // LightClientGPO contains default gasprice oracle settings for light client.
@@ -250,9 +251,17 @@ type Config struct {
 	SentinelAddr                string
 	SentinelPort                uint64
 
-	OverridePragueTime *big.Int `toml:",omitempty"`
-
 	ForcePartialCommit bool
+
+	OverrideCancunTime   *big.Int `toml:",omitempty"`
+	OverrideShanghaiTime *big.Int `toml:",omitempty"`
+	OverridePragueTime   *big.Int `toml:",omitempty"`
+
+	OverrideOptimismCanyonTime   *big.Int `toml:",omitempty"`
+	OverrideOptimismEcotoneTime  *big.Int `toml:",omitempty"`
+	OverrideOptimismFjordTime    *big.Int `toml:",omitempty"`
+	OverrideOptimismGraniteTime  *big.Int `toml:",omitempty"`
+	OverrideOptimismHoloceneTime *big.Int `toml:",omitempty"`
 
 	// Embedded Silkworm support
 	SilkwormExecution            bool
@@ -269,6 +278,12 @@ type Config struct {
 	SilkwormRpcJsonCompatibility bool
 
 	DisableTxPoolGossip bool
+
+	RollupSequencerHTTP        string
+	RollupHistoricalRPC        string
+	RollupHistoricalRPCTimeout time.Duration
+
+	RollupHaltOnIncompatibleProtocolVersion string
 }
 
 type Sync struct {

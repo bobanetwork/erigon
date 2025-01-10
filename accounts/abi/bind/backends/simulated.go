@@ -35,24 +35,24 @@ import (
 	state2 "github.com/erigontech/erigon-lib/state"
 	types2 "github.com/erigontech/erigon-lib/types"
 
-	ethereum "github.com/erigontech/erigon"
-	"github.com/erigontech/erigon/accounts/abi"
-	"github.com/erigontech/erigon/accounts/abi/bind"
-	"github.com/erigontech/erigon/common/math"
-	"github.com/erigontech/erigon/common/u256"
-	"github.com/erigontech/erigon/consensus"
-	"github.com/erigontech/erigon/consensus/ethash"
-	"github.com/erigontech/erigon/consensus/misc"
-	"github.com/erigontech/erigon/core"
-	"github.com/erigontech/erigon/core/rawdb"
-	"github.com/erigontech/erigon/core/state"
-	"github.com/erigontech/erigon/core/types"
-	"github.com/erigontech/erigon/core/vm"
-	"github.com/erigontech/erigon/core/vm/evmtypes"
-	"github.com/erigontech/erigon/event"
-	"github.com/erigontech/erigon/params"
-	"github.com/erigontech/erigon/turbo/services"
-	"github.com/erigontech/erigon/turbo/stages/mock"
+	ethereum "github.com/ledgerwatch/erigon"
+	"github.com/ledgerwatch/erigon-lib/opstack"
+	"github.com/ledgerwatch/erigon/accounts/abi"
+	"github.com/ledgerwatch/erigon/accounts/abi/bind"
+	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/common/u256"
+	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/ethash"
+	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/core"
+	"github.com/ledgerwatch/erigon/core/rawdb"
+	"github.com/ledgerwatch/erigon/core/state"
+	"github.com/ledgerwatch/erigon/core/types"
+	"github.com/ledgerwatch/erigon/core/vm"
+	"github.com/ledgerwatch/erigon/event"
+	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/turbo/services"
+	"github.com/ledgerwatch/erigon/turbo/stages/mock"
 )
 
 // This nil assignment ensures at compile time that SimulatedBackend implements bind.ContractBackend.
@@ -86,6 +86,8 @@ type SimulatedBackend struct {
 	rmLogsFeed event.Feed
 	chainFeed  event.Feed
 	logsFeed   event.Feed
+
+	chainConfig *chain.Config
 }
 
 // NewSimulatedBackend creates a new binding backend using a simulated blockchain
@@ -108,6 +110,7 @@ func NewSimulatedBackendWithConfig(alloc types.GenesisAlloc, config *chain.Confi
 			}
 			return h
 		},
+		chainConfig: config,
 	}
 	backend.emptyPendingBlock()
 	return backend
@@ -274,7 +277,7 @@ func (b *SimulatedBackend) TransactionReceipt(ctx context.Context, txHash libcom
 		return nil, err
 	}
 	// Read all the receipts from the block and return the one with the matching hash
-	receipts := rawdb.ReadReceipts(tx, block, nil)
+	receipts := rawdb.ReadReceipts(b.chainConfig, tx, block, nil)
 	for _, receipt := range receipts {
 		if receipt.TxHash == txHash {
 			return receipt, nil
@@ -722,6 +725,7 @@ func (b *SimulatedBackend) callContract(_ context.Context, call ethereum.CallMsg
 	txContext := core.NewEVMTxContext(msg)
 	header := block.Header()
 	evmContext := core.NewEVMBlockContext(header, core.GetHashFn(header, b.getHeader), b.m.Engine, nil)
+	evmContext.L1CostFunc = opstack.NewL1CostFunc(b.m.ChainConfig, statedb)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmEnv := vm.NewEVM(evmContext, txContext, statedb, b.m.ChainConfig, vm.Config{})
@@ -837,6 +841,11 @@ func (m callMsg) Data() []byte                          { return m.CallMsg.Data 
 func (m callMsg) AccessList() types2.AccessList         { return m.CallMsg.AccessList }
 func (m callMsg) Authorizations() []types.Authorization { return m.CallMsg.Authorizations }
 func (m callMsg) IsFree() bool                          { return false }
+func (m callMsg) IsFake() bool                          { return true }
+func (m callMsg) Mint() *uint256.Int                    { return nil }
+func (m callMsg) RollupCostData() types2.RollupCostData { return types2.RollupCostData{} }
+func (m callMsg) IsDepositTx() bool                     { return false }
+func (m callMsg) IsSystemTx() bool                      { return false }
 
 func (m callMsg) BlobGas() uint64                { return misc.GetBlobGasUsed(len(m.CallMsg.BlobHashes)) }
 func (m callMsg) MaxFeePerBlobGas() *uint256.Int { return m.CallMsg.MaxFeePerBlobGas }

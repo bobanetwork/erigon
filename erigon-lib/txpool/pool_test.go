@@ -804,7 +804,6 @@ func TestBlobTxReplacement(t *testing.T) {
 	require.True(pool != nil)
 	ctx := context.Background()
 	var stateVersionID uint64 = 0
-
 	h1 := gointerfaces.ConvertHashToH256([32]byte{})
 	change := &remote.StateChangeBatch{
 		StateVersionId:       stateVersionID,
@@ -821,7 +820,6 @@ func TestBlobTxReplacement(t *testing.T) {
 	// Add 1 eth to the user account, as a part of change
 	v := make([]byte, types.EncodeSenderLengthForStorage(2, *uint256.NewInt(1 * common.Ether)))
 	types.EncodeSender(2, *uint256.NewInt(1 * common.Ether), v)
-
 	change.ChangeBatch[0].Changes = append(change.ChangeBatch[0].Changes, &remote.AccountChange{
 		Action:  remote.Action_UPSERT,
 		Address: gointerfaces.ConvertAddressToH160(addr),
@@ -850,7 +848,6 @@ func TestBlobTxReplacement(t *testing.T) {
 			assert.Equal(txpoolcfg.Success, reason, reason.String())
 		}
 	}
-
 	{
 		// try to replace it with 5% extra blob gas, 2x higher tx fee - should fail
 		txSlots := types.TxSlots{}

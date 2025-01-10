@@ -27,7 +27,7 @@ on:
         required: false
         type: boolean
         default: false
-        description: 'perform_release: when set then all artifacts will be published and the DRAFT of the release 
+        description: 'perform_release: when set then all artifacts will be published and the DRAFT of the release
           notes will be created.'
       publish_latest_tag:
         required: false

@@ -39,14 +39,36 @@ const (
 	VersionKeyFinished = "ErigonVersionFinished"
 )
 
+// OPVersion is the version of op-geth
+var (
+	OPVersionMajor    = 1          // Major version component of the current release
+	OPVersionMinor    = 0          // Minor version component of the current release
+	OPVersionMicro    = 1          // Patch version component of the current release
+	OPVersionModifier = "unstable" // Version metadata to append to the version string
+)
+
 // Version holds the textual version string.
 var Version = func() string {
-	return fmt.Sprintf("%d.%02d.%d", VersionMajor, VersionMinor, VersionMicro)
+	return fmt.Sprintf("%d.%02d.%d", OPVersionMajor, OPVersionMinor, OPVersionMicro)
 }()
 
 // VersionWithMeta holds the textual version string including the metadata.
 var VersionWithMeta = func() string {
 	v := Version
+	if OPVersionModifier != "" {
+		v += "-" + OPVersionModifier
+	}
+	return v
+}()
+
+// ErigonVersion holds the textual erigon version string.
+var ErigonVersion = func() string {
+	return fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionMicro)
+}()
+
+// ErigonVersionWithMeta holds the textual erigon version string including the metadata.
+var ErigonVersionWithMeta = func() string {
+	v := ErigonVersion
 	if VersionModifier != "" {
 		v += "-" + VersionModifier
 	}

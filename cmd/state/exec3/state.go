@@ -11,6 +11,7 @@ import (
 	"github.com/erigontech/erigon-lib/chain"
 	libcommon "github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 
 	"github.com/erigontech/erigon/cmd/state/exec22"
 	"github.com/erigontech/erigon/consensus"
@@ -136,9 +137,17 @@ func (rw *Worker) RunTxTaskNoLock(txTask *exec22.TxTask) {
 	var err error
 	header := txTask.Header
 
+	// Optimism Canyon
+	create2DeployerTx := misc.IsCanyonActivationBlock(rw.chainConfig, header.Time) && txTask.TxIndex == -1
+
 	var logger = log.New("worker-tx")
 
 	switch {
+	case create2DeployerTx:
+		if create2DeployerTx && header != nil {
+			// Optimism Canyon
+			misc.EnsureCreate2Deployer(rw.chainConfig, header.Time, ibs)
+		}
 	case txTask.TxIndex == -1:
 		if txTask.BlockNum == 0 {
 			// Genesis block
@@ -195,6 +204,7 @@ func (rw *Worker) RunTxTaskNoLock(txTask *exec22.TxTask) {
 		if !rw.background {
 			getHashFn := core.GetHashFn(header, rw.getHeader)
 			blockContext = core.NewEVMBlockContext(header, getHashFn, rw.engine, nil /* author */)
+			blockContext.L1CostFunc = opstack.NewL1CostFunc(rw.chainConfig, rw.ibs)
 		}
 		rw.evm.ResetBetweenBlocks(blockContext, core.NewEVMTxContext(msg), ibs, vmConfig, rules)
 

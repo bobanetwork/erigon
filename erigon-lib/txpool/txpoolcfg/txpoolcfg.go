@@ -47,6 +47,9 @@ type Config struct {
 	BlobPriceBump       uint64 //Price bump percentage to replace an existing 4844 blob tx (type-3)
 	OverridePragueTime  *big.Int
 
+	OverrideShanghaiTime *big.Int
+	OverrideCancunTime   *big.Int
+
 	// regular batch tasks processing
 	SyncToNewPeersEvery   time.Duration
 	ProcessRemoteTxsEvery time.Duration
@@ -57,6 +60,10 @@ type Config struct {
 	MdbxPageSize    datasize.ByteSize
 	MdbxDBSizeLimit datasize.ByteSize
 	MdbxGrowthStep  datasize.ByteSize
+
+	Optimism                   bool
+	OverrideOptimismCanyonTime *big.Int
+	OptimismFjordTime          *big.Int
 
 	NoGossip bool // this mode doesn't broadcast any txs, and if receive remote-txn - skip it
 }
@@ -117,6 +124,7 @@ const (
 	BlobTxReplace       DiscardReason = 30 // Cannot replace type-3 blob txn with another type of txn
 	BlobPoolOverflow    DiscardReason = 31 // The total number of blobs (through blob txs) in the pool has reached its limit
 	NoAuthorizations    DiscardReason = 32 // EIP-7702 transactions with an empty authorization list are invalid
+	TxTypeNotSupported  DiscardReason = 33
 )
 
 func (r DiscardReason) String() string {
@@ -171,6 +179,10 @@ func (r DiscardReason) String() string {
 		return "fork supporting this transaction type is not activated yet"
 	case InvalidCreateTxn:
 		return "EIP-4844 & 7702 transactions cannot have the form of a create transaction"
+	case TxTypeNotSupported:
+		return types.ErrTxTypeNotSupported.Error()
+	case CreateBlobTxn:
+		return "blob transactions cannot have the form of a create transaction"
 	case NoBlobs:
 		return "blob transactions must have at least one blob"
 	case TooManyBlobs:

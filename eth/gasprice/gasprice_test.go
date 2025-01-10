@@ -53,7 +53,7 @@ func (b *testBackend) GetReceipts(ctx context.Context, block *types.Block) (type
 	}
 	defer tx.Rollback()
 
-	receipts := rawdb.ReadReceipts(tx, block, nil)
+	receipts := rawdb.ReadReceipts(b.cfg, tx, block, nil)
 	return receipts, nil
 }
 

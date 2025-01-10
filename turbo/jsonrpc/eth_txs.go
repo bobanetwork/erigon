@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/big"
 
 	"github.com/erigontech/erigon-lib/common/hexutil"
@@ -78,7 +79,15 @@ func (api *APIImpl) GetTransactionByHash(ctx context.Context, txnHash common.Has
 			return newRPCBorTransaction(borTx, txnHash, blockHash, blockNum, uint64(len(block.Transactions())), baseFee, chainConfig.ChainID), nil
 		}
 
-		return NewRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee), nil
+		if chainConfig.IsOptimism() {
+			receipts := rawdb.ReadRawReceipts(tx, block.NumberU64())
+			if len(receipts) <= int(txnIndex) {
+				return nil, fmt.Errorf("block has less receipts than expected: %d <= %d, block: %d", len(receipts), int(txnIndex), blockNum)
+			}
+			return NewRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee, receipts[txnIndex]), nil
+		}
+
+		return NewRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee, nil), nil
 	}
 
 	curHeader := rawdb.ReadCurrentHeader(tx)
@@ -193,7 +202,15 @@ func (api *APIImpl) GetTransactionByBlockHashAndIndex(ctx context.Context, block
 		return newRPCBorTransaction(borTx, derivedBorTxHash, block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), chainConfig.ChainID), nil
 	}
 
-	return NewRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee()), nil
+	if chainConfig.IsOptimism() {
+		receipts := rawdb.ReadRawReceipts(tx, block.NumberU64())
+		if len(receipts) <= int(txIndex) {
+			return nil, fmt.Errorf("block has less receipts than expected: %d <= %d, block: %d", len(receipts), int(txIndex), block.NumberU64())
+		}
+		return NewRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), receipts[txIndex]), nil
+	}
+
+	return NewRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), nil), nil
 }
 
 // GetRawTransactionByBlockHashAndIndex returns the bytes of the transaction for the given block hash and index.
@@ -256,8 +273,14 @@ func (api *APIImpl) GetTransactionByBlockNumberAndIndex(ctx context.Context, blo
 		derivedBorTxHash := bortypes.ComputeBorTxHash(blockNum, hash)
 		return newRPCBorTransaction(borTx, derivedBorTxHash, hash, blockNum, uint64(txIndex), block.BaseFee(), chainConfig.ChainID), nil
 	}
-
-	return NewRPCTransaction(txs[txIndex], hash, blockNum, uint64(txIndex), block.BaseFee()), nil
+	if chainConfig.IsOptimism() {
+		receipts := rawdb.ReadRawReceipts(tx, block.NumberU64())
+		if len(receipts) <= int(txIndex) {
+			return nil, fmt.Errorf("block has less receipts than expected: %d <= %d, block: %d", len(receipts), int(txIndex), block.NumberU64())
+		}
+		return NewRPCTransaction(txs[txIndex], block.Hash(), blockNum, uint64(txIndex), block.BaseFee(), receipts[txIndex]), nil
+	}
+	return NewRPCTransaction(txs[txIndex], hash, blockNum, uint64(txIndex), block.BaseFee(), nil), nil
 }
 
 // GetRawTransactionByBlockNumberAndIndex returns the bytes of the transaction for the given block number and index.

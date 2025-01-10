@@ -110,6 +110,14 @@ var (
 		Name:  "whitelist",
 		Usage: "Comma separated block number-to-hash mappings to enforce (<number>=<hash>)",
 	}
+	OverrideShanghaiTime = flags.BigFlag{
+		Name:  "override.shanghai",
+		Usage: "Manually specify the Shanghai fork time, overriding the bundled setting",
+	}
+	OverrideCancunFlag = flags.BigFlag{
+		Name:  "override.cancun",
+		Usage: "Manually specify the Cancun fork time, overriding the bundled setting",
+	}
 	OverridePragueFlag = flags.BigFlag{
 		Name:  "override.prague",
 		Usage: "Manually specify the Prague fork time, overriding the bundled setting",
@@ -117,6 +125,26 @@ var (
 	TrustedSetupFile = cli.StringFlag{
 		Name:  "trusted-setup-file",
 		Usage: "Absolute path to trusted_setup.json file",
+	}
+	OverrideOptimismCanyonFlag = flags.BigFlag{
+		Name:  "override.canyon",
+		Usage: "Manually specify the Optimism Canyon fork time, overriding the bundled setting",
+	}
+	OverrideOptimismEcotoneFlag = flags.BigFlag{
+		Name:  "override.ecotone",
+		Usage: "Manually specify the Optimism Ecotone fork time, overriding the bundled setting",
+	}
+	OverrideOptimismFjordFlag = flags.BigFlag{
+		Name:  "override.fjord",
+		Usage: "Manually specify the Optimism Fjord fork timestamp, overriding the bundled setting",
+	}
+	OverrideOptimismGraniteFlag = flags.BigFlag{
+		Name:  "override.granite",
+		Usage: "Manually specify the Optimism Granite fork timestamp, overriding the bundled setting",
+	}
+	OverrideOptimismHoloceneFlag = flags.BigFlag{
+		Name:  "override.holocene",
+		Usage: "Manually specify the Optimism Holocene fork timestamp, overriding the bundled setting",
 	}
 	// Ethash settings
 	EthashCachesInMemoryFlag = cli.IntFlag{
@@ -641,6 +669,37 @@ var (
 		Usage: "Maximum gas price will be recommended by gpo",
 		Value: ethconfig.Defaults.GPO.MaxPrice.Int64(),
 	}
+	GpoIgnoreGasPriceFlag = cli.Int64Flag{
+		Name:  "gpo.ignoreprice",
+		Usage: "Gas price below which gpo will ignore transactions",
+		Value: ethconfig.Defaults.GPO.IgnorePrice.Int64(),
+	}
+	GpoMinSuggestedPriorityFeeFlag = cli.Int64Flag{
+		Name:  "gpo.minsuggestedpriorityfee",
+		Usage: "Minimum transaction priority fee to suggest. Used on OP chains when blocks are not full.",
+		Value: ethconfig.Defaults.GPO.MinSuggestedPriorityFee.Int64(),
+	}
+
+	// Rollup Flags
+	RollupSequencerHTTPFlag = cli.StringFlag{
+		Name:    "rollup.sequencerhttp",
+		Usage:   "HTTP endpoint for the sequencer mempool",
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
+	}
+	RollupHistoricalRPCFlag = cli.StringFlag{
+		Name:    "rollup.historicalrpc",
+		Usage:   "RPC endpoint for historical data.",
+		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
+	}
+	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
+		Name:  "rollup.historicalrpctimeout",
+		Usage: "Timeout for historical RPC requests.",
+		Value: "5s",
+	}
+	RollupHaltOnIncompatibleProtocolVersionFlag = cli.StringFlag{
+		Name:  "rollup.halt",
+		Usage: "Opt-in option to halt on incompatible protocol version requirements of the given level (major/minor/patch/none), as signaled through the Engine API by the rollup node",
+	}
 
 	// Metrics flags
 	MetricsEnabledFlag = cli.BoolFlag{
@@ -849,7 +908,6 @@ var (
 		Usage: "Port for sentinel",
 		Value: 7777,
 	}
-
 	OtsSearchMaxCapFlag = cli.Uint64Flag{
 		Name:  "ots.search.max.pagesize",
 		Usage: "Max allowed page size for search methods",
@@ -1421,6 +1479,12 @@ func setGPO(ctx *cli.Context, cfg *gaspricecfg.Config) {
 	if ctx.IsSet(GpoMaxGasPriceFlag.Name) {
 		cfg.MaxPrice = big.NewInt(ctx.Int64(GpoMaxGasPriceFlag.Name))
 	}
+	if ctx.IsSet(GpoIgnoreGasPriceFlag.Name) {
+		cfg.IgnorePrice = big.NewInt(ctx.Int64(GpoIgnoreGasPriceFlag.Name))
+	}
+	if ctx.IsSet(GpoMinSuggestedPriorityFeeFlag.Name) {
+		cfg.MinSuggestedPriorityFee = big.NewInt(ctx.Int64(GpoMinSuggestedPriorityFeeFlag.Name))
+	}
 }
 
 // nolint
@@ -1830,6 +1894,14 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 			cfg.EthDiscoveryURLs = libcommon.CliString2Array(urls)
 		}
 	}
+	// Only configure sequencer http flag if we're running in verifier mode i.e. --mine is disabled.
+	if ctx.IsSet(RollupSequencerHTTPFlag.Name) && !ctx.IsSet(MiningEnabledFlag.Name) {
+		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
+		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
+	}
+	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
 
 	// Override any default configs for hard coded networks.
 	switch chain {
@@ -1860,13 +1932,64 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		if !ctx.IsSet(MinerGasPriceFlag.Name) {
 			cfg.Miner.GasPrice = big.NewInt(1)
 		}
+		// TODO(jky) Review whether to add OpDevnetChainName
+	}
+
+	// Set Optimism Fjord hardfork time
+	if cfg.Genesis != nil && cfg.Genesis.Config != nil {
+		if cfg.Genesis.Config.IsOptimism() {
+			cfg.TxPool.OptimismFjordTime = cfg.Genesis.Config.FjordTime
+		}
 	}
 
 	if ctx.IsSet(OverridePragueFlag.Name) {
 		cfg.OverridePragueTime = flags.GlobalBig(ctx, OverridePragueFlag.Name)
 		cfg.TxPool.OverridePragueTime = cfg.OverridePragueTime
 	}
+	if ctx.IsSet(OverrideShanghaiTime.Name) {
+		cfg.OverrideShanghaiTime = flags.GlobalBig(ctx, OverrideShanghaiTime.Name)
+		cfg.TxPool.OverrideShanghaiTime = cfg.OverrideShanghaiTime
+	}
 
+	if ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
+		cfg.OverrideOptimismCanyonTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		cfg.TxPool.OverrideOptimismCanyonTime = cfg.OverrideOptimismCanyonTime
+		// Shanghai hardfork is included in canyon hardfork
+		cfg.OverrideShanghaiTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		cfg.TxPool.OverrideShanghaiTime = cfg.OverrideOptimismCanyonTime
+	}
+	if ctx.IsSet(OverrideShanghaiTime.Name) && ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
+		overrideShanghaiTime := flags.GlobalBig(ctx, OverrideShanghaiTime.Name)
+		overrideOptimismCanyonTime := flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		if overrideShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
+			logger.Warn("Shanghai hardfork time is overridden by optimism canyon hardfork time",
+				"shanghai", overrideShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
+		}
+	}
+	if ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
+		cfg.OverrideOptimismEcotoneTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		// Cancun hardfork is included in Ecotone hardfork
+		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		cfg.TxPool.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+	}
+	if ctx.IsSet(OverrideCancunFlag.Name) && ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
+		overrideCancunTime := flags.GlobalBig(ctx, OverrideCancunFlag.Name)
+		overrideOptimismEcotoneTime := flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		if overrideCancunTime.Cmp(overrideOptimismEcotoneTime) != 0 {
+			logger.Warn("Cancun hardfork time is overridden by optimism Ecotone hardfork time",
+				"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
+		}
+	}
+	if ctx.IsSet(OverrideOptimismFjordFlag.Name) {
+		cfg.OverrideOptimismFjordTime = flags.GlobalBig(ctx, OverrideOptimismFjordFlag.Name)
+		cfg.TxPool.OptimismFjordTime = cfg.OverrideOptimismFjordTime
+	}
+	if ctx.IsSet(OverrideOptimismGraniteFlag.Name) {
+		cfg.OverrideOptimismGraniteTime = flags.GlobalBig(ctx, OverrideOptimismGraniteFlag.Name)
+	}
+	if ctx.IsSet(OverrideOptimismHoloceneFlag.Name) {
+		cfg.OverrideOptimismHoloceneTime = flags.GlobalBig(ctx, OverrideOptimismHoloceneFlag.Name)
+	}
 	if ctx.IsSet(InternalConsensusFlag.Name) && clparams.EmbeddedSupported(cfg.NetworkID) {
 		cfg.InternalCL = ctx.Bool(InternalConsensusFlag.Name)
 	}
@@ -1877,6 +2000,16 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 
 	if ctx.IsSet(TxPoolGossipDisableFlag.Name) {
 		cfg.DisableTxPoolGossip = ctx.Bool(TxPoolGossipDisableFlag.Name)
+	}
+
+	if ctx.IsSet(RollupHaltOnIncompatibleProtocolVersionFlag.Name) {
+		flag := ctx.String(RollupHaltOnIncompatibleProtocolVersionFlag.Name)
+		switch flag {
+		case "major", "minor", "patch", "none":
+			cfg.RollupHaltOnIncompatibleProtocolVersion = flag
+		default:
+			logger.Warn("Ignoring incorrect value for --rollup.halt. Please specify a level from major/minor/patch/none.")
+		}
 	}
 }
 

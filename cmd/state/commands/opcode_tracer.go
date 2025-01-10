@@ -715,6 +715,10 @@ func runBlock(engine consensus.Engine, ibs *state.IntraBlockState, txnWriter sta
 	usedGas := new(uint64)
 	usedBlobGas := new(uint64)
 	var receipts types.Receipts
+
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(chainConfig, header.Time, ibs)
+
 	core.InitializeBlockExecution(engine, nil, header, chainConfig, ibs, logger)
 	rules := chainConfig.Rules(block.NumberU64(), block.Time())
 	for i, tx := range block.Transactions() {

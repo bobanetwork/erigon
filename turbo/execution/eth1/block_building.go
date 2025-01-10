@@ -54,6 +54,10 @@ func (e *EthereumExecutionModule) AssembleBlock(ctx context.Context, req *execut
 		PrevRandao:            gointerfaces.ConvertH256ToHash(req.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertH160toAddress(req.SuggestedFeeRecipient),
 		Withdrawals:           eth1_utils.ConvertWithdrawalsFromRpc(req.Withdrawals),
+		Transactions:          req.Transactions,
+		NoTxPool:              req.NoTxPool,
+		GasLimit:              req.GasLimit,
+		EIP1559Params:         req.Eip_1559Params,
 	}
 
 	if err := e.checkWithdrawalsPresence(param.Timestamp, param.Withdrawals); err != nil {
@@ -216,13 +220,19 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 		requestsBundle = types2.RequestsBundle{Requests: requests}
 	}
 
+	data := execution.AssembledBlockData{
+		ExecutionPayload: payload,
+		BlockValue:       gointerfaces.ConvertUint256IntToH256(blockValue),
+		BlobsBundle:      blobsBundle,
+		Requests:         &requestsBundle,
+	}
+
+	if header.ParentBeaconBlockRoot != nil {
+		data.ParentBeaconBlockRoot = gointerfaces.ConvertHashToH256(*header.ParentBeaconBlockRoot)
+	}
+
 	return &execution.GetAssembledBlockResponse{
-		Data: &execution.AssembledBlockData{
-			ExecutionPayload: payload,
-			BlockValue:       gointerfaces.ConvertUint256IntToH256(blockValue),
-			BlobsBundle:      blobsBundle,
-			Requests:         &requestsBundle,
-		},
+		Data: &data,
 		Busy: false,
 	}, nil
 }

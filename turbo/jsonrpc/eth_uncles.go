@@ -47,7 +47,8 @@ func (api *APIImpl) GetUncleByBlockNumberAndIndex(ctx context.Context, number rp
 		return nil, nil
 	}
 	uncle := types.NewBlockWithHeader(uncles[index])
-	return ethapi.RPCMarshalBlock(uncle, false, false, additionalFields)
+	receipts := rawdb.ReadRawReceipts(tx, blockNum)
+	return ethapi.RPCMarshalBlock(uncle, false, false, additionalFields, receipts)
 }
 
 // GetUncleByBlockHashAndIndex implements eth_getUncleByBlockHashAndIndex. Returns information about an uncle given a block's hash and the index of the uncle.
@@ -79,8 +80,8 @@ func (api *APIImpl) GetUncleByBlockHashAndIndex(ctx context.Context, hash common
 		return nil, nil
 	}
 	uncle := types.NewBlockWithHeader(uncles[index])
-
-	return ethapi.RPCMarshalBlock(uncle, false, false, additionalFields)
+	receipts := rawdb.ReadRawReceipts(tx, number)
+	return ethapi.RPCMarshalBlock(uncle, false, false, additionalFields, receipts)
 }
 
 // GetUncleCountByBlockNumber implements eth_getUncleCountByBlockNumber. Returns the number of uncles in the block, if any.

@@ -112,6 +112,53 @@ func CreateTestSentry(t *testing.T) (*mock.MockSentry, *core.ChainPack, []*core.
 	return m, chain, []*core.ChainPack{orphanedChain}
 }
 
+func CreateOptimismTestSentry(t *testing.T) (*mock.MockSentry, *core.ChainPack, []*core.ChainPack) {
+	addresses := makeTestAddresses()
+	var (
+		key      = addresses.key
+		address  = addresses.address
+		address1 = addresses.address1
+		address2 = addresses.address2
+	)
+
+	var (
+		gspec = &types.Genesis{
+			Config: params.TestOptimismChainConfig,
+			Alloc: types.GenesisAlloc{
+				address:  {Balance: big.NewInt(9000000000000000000)},
+				address1: {Balance: big.NewInt(200000000000000000)},
+				address2: {Balance: big.NewInt(300000000000000000)},
+			},
+			GasLimit: 10000000,
+		}
+	)
+	m := mock.MockWithGenesis(t, gspec, key, false)
+
+	contractBackend := backends.NewTestSimulatedBackendWithConfig(t, gspec.Alloc, gspec.Config, gspec.GasLimit)
+	defer contractBackend.Close()
+
+	// Generate empty chain to have some orphaned blocks for tests
+	orphanedChain, err := core.GenerateChain(m.ChainConfig, m.Genesis, m.Engine, m.DB, 5, func(i int, block *core.BlockGen) {
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chain, err := getChainInstance(&addresses, m.ChainConfig, m.Genesis, m.Engine, m.DB, contractBackend)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = m.InsertChain(orphanedChain); err != nil {
+		t.Fatal(err)
+	}
+	if err = m.InsertChain(chain); err != nil {
+		t.Fatal(err)
+	}
+
+	return m, chain, []*core.ChainPack{orphanedChain}
+}
+
 var chainInstance *core.ChainPack
 
 func getChainInstance(

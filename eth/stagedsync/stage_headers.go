@@ -115,7 +115,6 @@ func SpawnStageHeaders(
 	}
 
 	return HeadersPOW(s, u, ctx, tx, cfg, initialCycle, test, useExternalTx, logger)
-
 }
 
 // HeadersPOW progresses Headers stage for Proof-of-Work headers
