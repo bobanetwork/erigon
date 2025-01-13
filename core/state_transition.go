@@ -620,11 +620,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*ev
 		}
 	}
 
-	return &evmtypes.ExecutionResult{
-		UsedGas:    st.gasUsed(),
-		Err:        vmerr,
-		ReturnData: ret,
-	}, nil
+	return result, nil
 }
 
 func (st *StateTransition) refundGas(refundQuotient uint64) {
