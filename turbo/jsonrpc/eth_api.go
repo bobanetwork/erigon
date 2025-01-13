@@ -460,10 +460,14 @@ func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber
 		txn = &t.Tx
 	}
 
-	v, r, s := txn.RawSignatureValues()
-	result.V = (*hexutil.Big)(v.ToBig())
-	result.R = (*hexutil.Big)(r.ToBig())
-	result.S = (*hexutil.Big)(s.ToBig())
+	// Deposit transactions have no chain ID, and no v, r, s values.
+	var v *uint256.Int
+	if txn.Type() != types.DepositTxType {
+		v, r, s := txn.RawSignatureValues()
+		result.V = (*hexutil.Big)(v.ToBig())
+		result.R = (*hexutil.Big)(r.ToBig())
+		result.S = (*hexutil.Big)(s.ToBig())
+	}
 
 	if txn.Type() == types.LegacyTxType {
 		chainId = types.DeriveChainId(v)
@@ -473,9 +477,12 @@ func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber
 		}
 		result.GasPrice = (*hexutil.Big)(txn.GetPrice().ToBig())
 	} else {
-		chainId.Set(txn.GetChainID())
-		result.ChainID = (*hexutil.Big)(chainId.ToBig())
-		result.YParity = (*hexutil.Big)(v.ToBig())
+		// Deposit transactions have no chain ID, and no v, r, s values.
+		if txn.Type() != types.DepositTxType {
+			chainId.Set(txn.GetChainID())
+			result.ChainID = (*hexutil.Big)(chainId.ToBig())
+			result.YParity = (*hexutil.Big)(v.ToBig())
+		}
 		acl := txn.GetAccessList()
 		result.Accesses = &acl
 
