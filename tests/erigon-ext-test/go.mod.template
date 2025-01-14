@@ -2,8 +2,6 @@ module example.com/erigon-ext-test
 
 go 1.20
 
-require github.com/erigontech/erigon devel
-
 replace github.com/erigontech/erigon => github.com/bobanetwork/op-erigon $COMMIT_SHA
 
 replace github.com/erigontech/erigon-lib => github.com/bobanetwork/op-erigon/erigon-lib $COMMIT_SHA
