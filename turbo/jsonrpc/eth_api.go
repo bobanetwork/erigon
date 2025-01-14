@@ -461,9 +461,9 @@ func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber
 	}
 
 	// Deposit transactions have no chain ID, and no v, r, s values.
-	var v *uint256.Int
+	var v, r, s *uint256.Int
 	if txn.Type() != types.DepositTxType {
-		v, r, s := txn.RawSignatureValues()
+		v, r, s = txn.RawSignatureValues()
 		result.V = (*hexutil.Big)(v.ToBig())
 		result.R = (*hexutil.Big)(r.ToBig())
 		result.S = (*hexutil.Big)(s.ToBig())
