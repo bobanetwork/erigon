@@ -488,7 +488,7 @@ func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber
 
 		if txn.Type() == types.AccessListTxType {
 			result.GasPrice = (*hexutil.Big)(txn.GetPrice().ToBig())
-		} else {
+		} else if txn.Type() != types.DepositTxType {
 			result.GasPrice = computeGasPrice(txn, blockHash, baseFee)
 			result.Tip = (*hexutil.Big)(txn.GetTip().ToBig())
 			result.FeeCap = (*hexutil.Big)(txn.GetFeeCap().ToBig())
