@@ -37,6 +37,7 @@ func (g Genesis) MarshalJSON() ([]byte, error) {
 		ExcessBlobGas         *math.HexOrDecimal64                         `json:"excessBlobGas"`
 		ParentBeaconBlockRoot *common.Hash                                 `json:"parentBeaconBlockRoot"`
 		RequestsHash          *common.Hash                                 `json:"requestsHash"`
+		StateHash             *common.Hash                                 `json:"stateHash,omitempty"`
 	}
 	var enc Genesis
 	enc.Config = g.Config
@@ -62,6 +63,7 @@ func (g Genesis) MarshalJSON() ([]byte, error) {
 	enc.ExcessBlobGas = (*math.HexOrDecimal64)(g.ExcessBlobGas)
 	enc.ParentBeaconBlockRoot = g.ParentBeaconBlockRoot
 	enc.RequestsHash = g.RequestsHash
+	enc.StateHash = g.StateHash
 	return json.Marshal(&enc)
 }
 
@@ -86,6 +88,7 @@ func (g *Genesis) UnmarshalJSON(input []byte) error {
 		ExcessBlobGas         *math.HexOrDecimal64                         `json:"excessBlobGas"`
 		ParentBeaconBlockRoot *common.Hash                                 `json:"parentBeaconBlockRoot"`
 		RequestsHash          *common.Hash                                 `json:"requestsHash"`
+		StateHash             *common.Hash                                 `json:"stateHash,omitempty"`
 	}
 	var dec Genesis
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -150,6 +153,9 @@ func (g *Genesis) UnmarshalJSON(input []byte) error {
 	}
 	if dec.RequestsHash != nil {
 		g.RequestsHash = dec.RequestsHash
+	}
+	if dec.StateHash != nil {
+		g.StateHash = dec.StateHash
 	}
 	return nil
 }
