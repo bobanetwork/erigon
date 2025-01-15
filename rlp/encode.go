@@ -25,10 +25,10 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
-	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/erigontech/erigon-lib/common"
 )
 
 // https://github.com/ethereum/wiki/wiki/RLP
@@ -863,5 +863,24 @@ func EncodeStringSizePrefix(size int, w io.Writer, buffer []byte) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func EncodeOptionalAddress(addr *libcommon.Address, w io.Writer, buffer []byte) error {
+	if addr == nil {
+		buffer[0] = 128
+	} else {
+		buffer[0] = 128 + 20
+	}
+
+	if _, err := w.Write(buffer[:1]); err != nil {
+		return err
+	}
+	if addr != nil {
+		if _, err := w.Write(addr.Bytes()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

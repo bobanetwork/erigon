@@ -24,10 +24,10 @@ import (
 
 	"github.com/c2h5oh/datasize"
 
-	"github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/erigon-lib/common/fixedgas"
-	emath "github.com/ledgerwatch/erigon-lib/common/math"
-	"github.com/ledgerwatch/erigon-lib/types"
+	"github.com/erigontech/erigon-lib/common"
+	"github.com/erigontech/erigon-lib/common/fixedgas"
+	emath "github.com/erigontech/erigon-lib/common/math"
+	"github.com/erigontech/erigon-lib/types"
 )
 
 // BorDefaultTxPoolPriceLimit defines the minimum gas price limit for bor to enforce txs acceptance into the pool.
@@ -45,6 +45,7 @@ type Config struct {
 	TotalBlobPoolLimit  uint64 // Total number of blobs (not txs) allowed within the txpool
 	PriceBump           uint64 // Price bump percentage to replace an already existing transaction
 	BlobPriceBump       uint64 //Price bump percentage to replace an existing 4844 blob tx (type-3)
+	OverridePragueTime  *big.Int
 
 	OverrideShanghaiTime *big.Int
 	OverrideCancunTime   *big.Int
@@ -114,7 +115,7 @@ const (
 	DuplicateHash       DiscardReason = 21 // There was an existing transaction with the same hash
 	InitCodeTooLarge    DiscardReason = 22 // EIP-3860 - transaction init code is too large
 	TypeNotActivated    DiscardReason = 23 // For example, an EIP-4844 transaction is submitted before Cancun activation
-	CreateBlobTxn       DiscardReason = 24 // Blob transactions cannot have the form of a create transaction
+	InvalidCreateTxn    DiscardReason = 24 // EIP-4844 & 7702 transactions cannot have the form of a create transaction
 	NoBlobs             DiscardReason = 25 // Blob transactions must have at least one blob
 	TooManyBlobs        DiscardReason = 26 // There's a limit on how many blobs a block (and thus any transaction) may have
 	UnequalBlobTxExt    DiscardReason = 27 // blob_versioned_hashes, blobs, commitments and proofs must have equal number
@@ -122,8 +123,8 @@ const (
 	UnmatchedBlobTxExt  DiscardReason = 29 // KZGcommitments must match the corresponding blobs and proofs
 	BlobTxReplace       DiscardReason = 30 // Cannot replace type-3 blob txn with another type of txn
 	BlobPoolOverflow    DiscardReason = 31 // The total number of blobs (through blob txs) in the pool has reached its limit
-
-	TxTypeNotSupported DiscardReason = 32
+	NoAuthorizations    DiscardReason = 32 // EIP-7702 transactions with an empty authorization list are invalid
+	TxTypeNotSupported  DiscardReason = 33
 )
 
 func (r DiscardReason) String() string {
@@ -176,10 +177,10 @@ func (r DiscardReason) String() string {
 		return "initcode too large"
 	case TypeNotActivated:
 		return "fork supporting this transaction type is not activated yet"
+	case InvalidCreateTxn:
+		return "EIP-4844 & 7702 transactions cannot have the form of a create transaction"
 	case TxTypeNotSupported:
 		return types.ErrTxTypeNotSupported.Error()
-	case CreateBlobTxn:
-		return "blob transactions cannot have the form of a create transaction"
 	case NoBlobs:
 		return "blob transactions must have at least one blob"
 	case TooManyBlobs:
@@ -188,13 +189,16 @@ func (r DiscardReason) String() string {
 		return "can't replace blob-txn with a non-blob-txn"
 	case BlobPoolOverflow:
 		return "blobs limit in txpool is full"
+	case NoAuthorizations:
+		return "EIP-7702 transactions with an empty authorization list are invalid"
 	default:
 		panic(fmt.Sprintf("discard reason: %d", r))
 	}
 }
 
 // CalcIntrinsicGas computes the 'intrinsic gas' for a message with the given data.
-func CalcIntrinsicGas(dataLen, dataNonZeroLen uint64, accessList types.AccessList, isContractCreation, isHomestead, isEIP2028, isShanghai bool) (uint64, DiscardReason) {
+// TODO: move input data to a struct
+func CalcIntrinsicGas(dataLen, dataNonZeroLen, authorizationsLen uint64, accessList types.AccessList, isContractCreation, isHomestead, isEIP2028, isShanghai bool) (uint64, DiscardReason) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
 	if isContractCreation && isHomestead {
@@ -263,6 +267,18 @@ func CalcIntrinsicGas(dataLen, dataNonZeroLen uint64, accessList types.AccessLis
 			return 0, GasUintOverflow
 		}
 	}
+
+	// Add the cost of authorizations
+	product, overflow := emath.SafeMul(authorizationsLen, fixedgas.PerEmptyAccountCost)
+	if overflow {
+		return 0, GasUintOverflow
+	}
+
+	gas, overflow = emath.SafeAdd(gas, product)
+	if overflow {
+		return 0, GasUintOverflow
+	}
+
 	return gas, Success
 }
 

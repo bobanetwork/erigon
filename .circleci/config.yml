@@ -136,7 +136,7 @@ jobs:
         description: The make target to execute
         type: string
     docker:
-      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.0
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.2
     resource_class: xlarge
     parallelism: 6
     steps:
@@ -148,8 +148,8 @@ jobs:
             cd ~/project/boba/op-erigon
             go mod edit -module="github.com/ethereum-optimism/optimism/op-erigon"
             go mod edit \
-            -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/op-erigon@$CIRCLE_SHA1" \
-            -replace "github.com/ledgerwatch/erigon-lib=github.com/bobanetwork/op-erigon/erigon-lib@$CIRCLE_SHA1"
+            -replace "github.com/erigontech/erigon=github.com/bobanetwork/op-erigon@$CIRCLE_SHA1" \
+            -replace "github.com/erigontech/erigon-lib=github.com/bobanetwork/op-erigon/erigon-lib@$CIRCLE_SHA1"
             go mod tidy
       - run:
           name: prep results dir
