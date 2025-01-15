@@ -136,7 +136,7 @@ jobs:
         description: The make target to execute
         type: string
     docker:
-      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.0
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.5.2
     resource_class: xlarge
     parallelism: 6
     steps:
